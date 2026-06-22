@@ -1,14 +1,15 @@
-# Summer Body
+# Portal Diario
 
-App de seguimiento físico para entrenar, registrar progreso y ver continuidad sin depender de hojas de cálculo.
+Portal privado para gestionar habitos diarios, entrenamiento, check-ins corporales y progreso visual sin depender de hojas de calculo.
 
 ## Enfoque actual
 
-- Una sesión principal repetible de `30-40 min`: flexiones, variantes de empuje y core.
-- Un modo express de `15 min` para días con poco tiempo.
-- Check-in corporal independiente del entrenamiento: puedes medir peso/cintura antes de entrenar y completar la sesión después.
-- Calendario mensual para ver días hechos, pendientes y fallados.
-- Imágenes de progreso comparables en el mismo panel.
+- Panel "Hoy" con habitos previstos, porcentaje completado y bloque de entreno si toca.
+- Gestion de habitos diarios o por dias concretos: creatina, paseo, agua, dormir, entrenar, etc.
+- Perfil personal con objetivo principal y tema visual.
+- Check-in corporal independiente del entrenamiento: peso, cintura y nota por fecha.
+- Calendario mensual para ver dias con habitos o entrenos registrados.
+- Imagenes de progreso comparables en el mismo panel.
 
 ## Desarrollo local
 
@@ -52,8 +53,12 @@ En Vercel añade las mismas variables en `Project Settings -> Environment Variab
    - Password temporal o definitivo
    - Activa `Auto Confirm User` para no depender del correo de confirmación.
 
-La app lee estas tablas si existen en tu Supabase:
+La app lee estas tablas en Supabase:
 
+- `user_profiles`: objetivo, tema y configuracion del portal por usuario.
+- `habits`: habitos configurables por usuario.
+- `habit_logs`: completados diarios de cada habito.
+- `user_achievements`: logros desbloqueados por usuario.
 - `workouts`: entrenos por usuario.
 - `measurements`: peso, cintura y notas por fecha.
 - `progress_photos`: metadatos de fotos.
@@ -64,6 +69,10 @@ La app lee estas tablas si existen en tu Supabase:
 Si `routine_templates` o `routine_exercises` no existen todavía, la app usa la rutina de respaldo incluida en el código.
 
 La app puede preparar automáticamente el bucket `progress-photos` desde el backend si `SUPABASE_SERVICE_ROLE_KEY` está configurada.
+
+### Migraciones
+
+Las migraciones de Supabase se aplican manualmente y no se versionan en el repositorio. La app espera las tablas del portal (`user_profiles`, `habits`, `habit_logs`) y la tabla de logros (`user_achievements`) con RLS por usuario.
 
 ## Vercel
 
@@ -80,8 +89,10 @@ Vercel ejecutará `next build` automáticamente. No subas `.env.local`; ya está
 ## Comprobar que funciona
 
 - Healthcheck: abre `/api/health`. Debe devolver `ok: true` y las variables de Supabase en `true`.
-- Auth: crea un usuario manual, entra con email y contraseña.
-- Entrenos: pulsa `Comenzar entreno`, marca alguna serie y termina. Debe aparecer en `workouts`.
+- Auth: crea un usuario manual, entra con email y contraseña. Debe crearse su perfil y sembrarse los habitos por defecto.
+- Habitos: completa/desmarca un habito de hoy, crea uno nuevo y edita su frecuencia.
+- Logros: completa el primer habito y comprueba que aparece un desbloqueo sin duplicarse si repites la accion.
+- Entrenos: pulsa `Comenzar entreno`, marca alguna serie y termina. Debe aparecer en `workouts` y marcar el habito `Entrenar` si existe.
 - Rutina: si existen `routine_templates` y `routine_exercises`, la app carga la activa; si no, usa la rutina integrada.
 - Medidas: guarda peso/cintura. Debe aparecer en `measurements`.
 - Fotos: pulsa `Preparar almacenamiento` si aparece, sube una imagen y comprueba bucket `progress-photos` + fila en `progress_photos`.

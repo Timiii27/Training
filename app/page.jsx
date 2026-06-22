@@ -1,223 +1,44 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AppHeader,
+  AuthScreen,
+  CalendarSection,
+  HabitsSection,
+  ProgressSection,
+  SettingsSection,
+  TodayDashboard,
+  TrainingSection,
+  WorkoutPlayer,
+} from "./components/portal-sections";
 import { createClient } from "../lib/supabase/client";
+import {
+  ACTIVE_WORKOUT_KEY,
+  blankHabitForm,
+  countCompletedSets,
+  defaultHabitSeeds,
+  defaultProfile,
+  displayNameFromSession,
+  dueHabitsForDate,
+  getAchievementProgress,
+  getGlobalStreak,
+  getLongestStreak,
+  fallbackWorkoutPlan,
+  firstTrackingDate,
+  getMonthDays,
+  getMotivationMessage,
+  getUnlockedAchievements,
+  habitToForm,
+  localIso,
+  logKey,
+  normalizeRoutine,
+  restLeftFor,
+  workoutElapsedFor,
+} from "../lib/portal/defaults";
 
-const BUCKET = "progress-photos";
-const EXERCISE_IMAGE_BASE = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises";
-const ACTIVE_WORKOUT_KEY = "summer-body-active-workout";
 const SHAKE_THRESHOLD = 28;
 const SHAKE_COOLDOWN_MS = 1400;
-
-function exerciseImage(path) {
-  return `${EXERCISE_IMAGE_BASE}/${path}`;
-}
-
-const fallbackWorkoutPlan = {
-  title: "Torso V + core",
-  duration: "30-40 min",
-  promise: "Sesión diaria para ganar presencia en pecho, hombro y espalda alta mientras la cintura se ve más recogida.",
-  exercises: [
-    {
-      name: "Flexiones normales o inclinadas",
-      sets: 4,
-      reps: "8-15",
-      rest: 60,
-      image: exerciseImage("Pushups/0.jpg"),
-      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Pushups",
-      cue: "Cuerpo firme, pecho al suelo o al apoyo, empuja como si quisieras separar el suelo.",
-    },
-    {
-      name: "Press en suelo con mochila",
-      sets: 3,
-      reps: "10-15",
-      rest: 60,
-      image: exerciseImage("Dumbbell_Floor_Press/0.jpg"),
-      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Dumbbell_Floor_Press",
-      cue: "Mochila pegada al pecho o mancuernas si tienes. Si no hay peso, cambia por flexiones con pausa.",
-    },
-    {
-      name: "Remo invertido o remo con sábana",
-      sets: 4,
-      reps: "8-12",
-      rest: 75,
-      image: exerciseImage("Inverted_Row/0.jpg"),
-      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Inverted_Row",
-      cue: "Prioridad visual para tu estructura: espalda alta y dorsales. Si no puedes, haz remo con banda o mochila.",
-    },
-    {
-      name: "Band pull-apart o Y-T-W",
-      sets: 3,
-      reps: "15-25",
-      rest: 45,
-      image: exerciseImage("Band_Pull_Apart/0.jpg"),
-      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Band_Pull_Apart",
-      cue: "Hombro posterior y postura. Esto hace que el pecho se vea mejor y protege tus hombros.",
-    },
-    {
-      name: "Flexiones cerradas",
-      sets: 2,
-      reps: "6-12",
-      rest: 75,
-      image: exerciseImage("Pushups_Close_and_Wide_Hand_Positions/0.jpg"),
-      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Pushups_Close_and_Wide_Hand_Positions",
-      cue: "Tríceps y pecho. Si el hombro protesta, abre un poco manos o hazlas inclinadas.",
-    },
-    {
-      name: "Dead bug controlado",
-      sets: 3,
-      reps: "8-12 / lado",
-      rest: 45,
-      image: exerciseImage("Dead_Bug/0.jpg"),
-      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Dead_Bug",
-      cue: "Zona lumbar pegada al suelo. Si se arquea, reduce recorrido.",
-    },
-    {
-      name: "Plancha con toque de hombro",
-      sets: 3,
-      reps: "10-20 toques",
-      rest: 45,
-      image: exerciseImage("Plank/0.jpg"),
-      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Plank",
-      cue: "Cadera quieta. Lento y estable vale más que rápido y torcido.",
-    },
-    {
-      name: "Plancha lateral",
-      sets: 2,
-      reps: "25-45 s / lado",
-      rest: 45,
-      image: exerciseImage("Side_Bridge/0.jpg"),
-      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Side_Bridge",
-      cue: "Cadera alta. Mejor corta y limpia que larga y doblada.",
-    },
-  ],
-};
-
-const quickPlan = [
-  "3 rondas de flexiones 8-15",
-  "3 rondas de dead bug 10/lado",
-  "2 rondas de plancha 40 s",
-  "Una foto mental: hoy has sumado",
-];
-
-function displayNameFromSession(session) {
-  const metadataName = session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name;
-  const raw = metadataName || session?.user?.email?.split("@")[0] || "Atleta";
-  const cleaned = raw.replace(/[._-]+/g, " ").replace(/\d+/g, "").trim() || "Atleta";
-  return cleaned
-    .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
-}
-
-function firstTrackingDate(workouts, measurements, photos) {
-  const dates = [...workouts, ...measurements, ...photos].map((item) => item.date).filter(Boolean).sort();
-  return dates[0] || localIso();
-}
-
-function normalizeRoutine(row) {
-  if (!row) return fallbackWorkoutPlan;
-
-  const exercises = [...(row.routine_exercises || [])]
-    .sort((a, b) => a.sort_order - b.sort_order)
-    .map((exercise) => ({
-      name: exercise.name,
-      sets: exercise.sets,
-      reps: exercise.reps,
-      rest: exercise.rest_seconds,
-      image: exercise.image_url || "/assets/exercises/pushup.jpg",
-      referenceUrl: exercise.reference_url,
-      cue: exercise.cue,
-    }));
-
-  if (!exercises.length) return fallbackWorkoutPlan;
-
-  return {
-    title: row.title,
-    duration: row.duration_label,
-    promise: row.promise,
-    exercises,
-  };
-}
-
-function localIso(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function formatShortDate(date) {
-  return new Intl.DateTimeFormat("es-ES", { day: "2-digit", month: "short" }).format(new Date(`${date}T12:00:00`));
-}
-
-function monthLabel(date) {
-  return new Intl.DateTimeFormat("es-ES", { month: "long", year: "numeric" }).format(date);
-}
-
-function secondsLabel(seconds) {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-}
-
-function countCompletedSets(completedSets) {
-  return Object.values(completedSets || {}).reduce((sum, count) => sum + count, 0);
-}
-
-function restLeftFor(workout, now = Date.now()) {
-  if (!workout?.restEndsAt) return 0;
-  return Math.max(0, Math.ceil((workout.restEndsAt - now) / 1000));
-}
-
-function workoutElapsedFor(workout, now = Date.now()) {
-  if (!workout?.startedAt) return 0;
-  return Math.max(0, Math.floor((now - workout.startedAt) / 1000));
-}
-
-function getMonthDays(anchor) {
-  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
-  const startOffset = (first.getDay() + 6) % 7;
-  const start = new Date(first);
-  start.setDate(first.getDate() - startOffset);
-  return Array.from({ length: 42 }, (_, index) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + index);
-    return date;
-  });
-}
-
-function streakFor(workouts) {
-  const dates = [...new Set(workouts.filter((item) => item.status === "completed").map((item) => item.date))].sort().reverse();
-  if (!dates.length) return 0;
-  const today = localIso();
-  const latestDiff = Math.round((new Date(`${today}T12:00:00`) - new Date(`${dates[0]}T12:00:00`)) / 86400000);
-  if (latestDiff > 1) return 0;
-
-  let streak = 1;
-  for (let index = 1; index < dates.length; index += 1) {
-    const diff = Math.round((new Date(`${dates[index - 1]}T12:00:00`) - new Date(`${dates[index]}T12:00:00`)) / 86400000);
-    if (diff === 1) streak += 1;
-    else break;
-  }
-  return streak;
-}
-
-function trendPoints(measurements, field) {
-  const values = measurements
-    .filter((item) => Number.isFinite(Number(item[field])))
-    .slice(-8)
-    .map((item) => Number(item[field]));
-  if (values.length < 2) return "";
-
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-  return values
-    .map((value, index) => {
-      const x = (index / (values.length - 1)) * 100;
-      const y = 86 - ((value - min) / span) * 70;
-      return `${x},${y}`;
-    })
-    .join(" ");
-}
 
 async function normalizePhoto(file) {
   const lowerName = file.name.toLowerCase();
@@ -232,17 +53,52 @@ async function normalizePhoto(file) {
   return { file: jpg, extension: "jpg", contentType: "image/jpeg" };
 }
 
+function newProfile(session) {
+  return {
+    id: session.user.id,
+    display_name: displayNameFromSession(session),
+    ...defaultProfile,
+  };
+}
+
+function profileWithFallback(profile, session) {
+  return {
+    ...newProfile(session),
+    ...(profile || {}),
+    portal_config: {
+      ...defaultProfile.portal_config,
+      ...(profile?.portal_config || {}),
+    },
+  };
+}
+
+function safeNumber(value, fallback = 1) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
 export default function HomePage() {
   const supabase = useMemo(() => createClient(), []);
   const wakeLockRef = useRef(null);
   const audioRef = useRef(null);
   const lastCueRef = useRef(null);
   const lastShakeRef = useRef(0);
+
   const [session, setSession] = useState(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [activeView, setActiveView] = useState("today");
+
+  const [profile, setProfile] = useState(null);
+  const [profileDraft, setProfileDraft] = useState(defaultProfile);
+  const [habits, setHabits] = useState([]);
+  const [habitLogs, setHabitLogs] = useState([]);
+  const [achievements, setAchievements] = useState([]);
+  const [habitForm, setHabitForm] = useState(blankHabitForm());
+
   const [workouts, setWorkouts] = useState([]);
   const [measurements, setMeasurements] = useState([]);
   const [photos, setPhotos] = useState([]);
@@ -252,14 +108,13 @@ export default function HomePage() {
   const [measureForm, setMeasureForm] = useState({ date: localIso(), weight: "", waist: "", note: "" });
   const [photoDate, setPhotoDate] = useState(localIso());
   const [photoNote, setPhotoNote] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [now, setNow] = useState(Date.now());
   const [storedWorkout, setStoredWorkout] = useState(null);
   const [photoStorage, setPhotoStorage] = useState({ checked: false, ready: false, isSettingUp: false, message: "" });
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [shakeEnabled, setShakeEnabled] = useState(false);
   const [wakeLockStatus, setWakeLockStatus] = useState("idle");
   const [motionMessage, setMotionMessage] = useState("");
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     let mounted = true;
@@ -282,6 +137,11 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!session?.user) {
+      setProfile(null);
+      setProfileDraft(defaultProfile);
+      setHabits([]);
+      setHabitLogs([]);
+      setAchievements([]);
       setWorkouts([]);
       setMeasurements([]);
       setPhotos([]);
@@ -296,9 +156,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!activeWorkout) return undefined;
-    const timer = setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [activeWorkout]);
 
@@ -374,21 +232,462 @@ export default function HomePage() {
     }
   }
 
-  async function checkPhotoStorage() {
-    try {
-      const response = await fetch("/api/setup/storage");
-      const result = await response.json();
-      setPhotoStorage({
-        checked: true,
-        ready: Boolean(result.ok && result.exists),
-        isSettingUp: false,
-        message: result.ok && result.exists ? "" : "El almacenamiento de imágenes aún no está preparado.",
-      });
-      return Boolean(result.ok && result.exists);
-    } catch {
-      setPhotoStorage({ checked: true, ready: false, isSettingUp: false, message: "No pude comprobar el almacenamiento." });
-      return false;
+  async function ensureProfileAndHabits(foundProfile, foundHabits) {
+    if (!session?.user) return { profile: foundProfile, habits: foundHabits };
+
+    let nextProfile = profileWithFallback(foundProfile, session);
+    if (!foundProfile) {
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .upsert(nextProfile, { onConflict: "id" })
+        .select("*")
+        .single();
+      if (!error && data) nextProfile = profileWithFallback(data, session);
     }
+
+    let nextHabits = foundHabits || [];
+    if (!nextHabits.length) {
+      const seeds = defaultHabitSeeds.map((habit) => ({
+        ...habit,
+        user_id: session.user.id,
+        frequency_type: habit.frequency_type || "daily",
+        target_count: habit.target_count || 1,
+        is_active: true,
+      }));
+      const { data, error } = await supabase.from("habits").insert(seeds).select("*").order("sort_order", { ascending: true });
+      if (!error) nextHabits = data || [];
+    }
+
+    return { profile: nextProfile, habits: nextHabits };
+  }
+
+  async function loadRoutine() {
+    try {
+      const filteredResult = await supabase
+        .from("routine_templates")
+        .select("*, routine_exercises(*)")
+        .eq("active", true)
+        .or(`user_id.eq.${session.user.id},user_id.is.null`)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!filteredResult.error && filteredResult.data) return normalizeRoutine(filteredResult.data);
+
+      const result = await supabase
+        .from("routine_templates")
+        .select("*, routine_exercises(*)")
+        .eq("active", true)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!result.error && result.data) return normalizeRoutine(result.data);
+    } catch {
+      return fallbackWorkoutPlan;
+    }
+
+    return fallbackWorkoutPlan;
+  }
+
+  async function syncAchievements(snapshot, knownAchievements = []) {
+    if (!session?.user) return knownAchievements;
+
+    const progress = getAchievementProgress(snapshot);
+    const knownKeys = new Set(knownAchievements.map((row) => row.achievement_key));
+    const newlyUnlocked = progress
+      .filter((achievement) => achievement.achieved && !knownKeys.has(achievement.key))
+      .map((achievement) => ({
+        user_id: session.user.id,
+        achievement_key: achievement.key,
+        metadata: {
+          current: achievement.current,
+          target: achievement.target,
+          title: achievement.title,
+        },
+      }));
+
+    if (!newlyUnlocked.length) return knownAchievements;
+
+    const { data, error } = await supabase
+      .from("user_achievements")
+      .upsert(newlyUnlocked, { onConflict: "user_id,achievement_key" })
+      .select("*");
+
+    if (error) return knownAchievements;
+    setMessage(`Logro desbloqueado: ${newlyUnlocked[0].metadata.title}.`);
+    return [...knownAchievements, ...(data || [])];
+  }
+
+  async function loadData() {
+    if (!session?.user) return;
+
+    setLoading(true);
+    setMessage("");
+
+    const [workoutResult, measureResult, profileResult, habitsResult, logsResult, achievementResult, photoResult, routine] = await Promise.all([
+      supabase.from("workouts").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }),
+      supabase.from("measurements").select("*").order("date", { ascending: true }).order("created_at", { ascending: true }),
+      supabase.from("user_profiles").select("*").eq("id", session.user.id).maybeSingle(),
+      supabase.from("habits").select("*").eq("user_id", session.user.id).order("sort_order", { ascending: true }).order("created_at", { ascending: true }),
+      supabase.from("habit_logs").select("*").eq("user_id", session.user.id).order("date", { ascending: false }).limit(500),
+      supabase.from("user_achievements").select("*").eq("user_id", session.user.id).order("unlocked_at", { ascending: true }),
+      fetch("/api/photos").then((response) => response.json()).catch((error) => ({ ok: false, error: error.message })),
+      loadRoutine(),
+    ]);
+
+    if (workoutResult.error) {
+      setMessage("No pude cargar tus entrenos. Revisa la conexion del proyecto.");
+      setLoading(false);
+      return;
+    }
+
+    const portalTablesMissing = [profileResult, habitsResult, logsResult].some((result) => result?.error);
+    const achievementsMissing = Boolean(achievementResult.error);
+    if (portalTablesMissing) {
+      setMessage("Faltan las tablas del portal. Aplica la migracion de Supabase incluida en el proyecto.");
+    } else if (achievementsMissing) {
+      setMessage("Falta la tabla de logros. Aplica la nueva migracion de Supabase para activar insignias.");
+    }
+
+    const ensured = portalTablesMissing
+      ? { profile: profileWithFallback(null, session), habits: [] }
+      : await ensureProfileAndHabits(profileResult.data, habitsResult.data || []);
+
+    const nextHabits = ensured.habits || [];
+    const nextHabitLogs = logsResult.error ? [] : logsResult.data || [];
+    const nextWorkouts = workoutResult.data || [];
+    const nextMeasurements = measureResult.error ? [] : measureResult.data || [];
+    const nextPhotos = photoResult.ok ? photoResult.photos || [] : [];
+    const nextAchievements = achievementResult.error ? [] : await syncAchievements(
+      {
+        habits: nextHabits,
+        habitLogs: nextHabitLogs,
+        workouts: nextWorkouts,
+        measurements: nextMeasurements,
+        photos: nextPhotos,
+      },
+      achievementResult.data || [],
+    );
+
+    setProfile(ensured.profile);
+    setProfileDraft(ensured.profile);
+    setHabits(nextHabits);
+    setHabitLogs(nextHabitLogs);
+    setAchievements(nextAchievements);
+    setWorkouts(nextWorkouts);
+    setMeasurements(nextMeasurements);
+    setPhotos(nextPhotos);
+    setPhotoStorage({
+      checked: true,
+      ready: Boolean(photoResult.storageReady),
+      isSettingUp: false,
+      message: photoResult.storageReady ? "" : "El almacenamiento de imagenes aun no esta preparado.",
+    });
+    setRoutinePlan(routine);
+    setHabitForm(blankHabitForm((nextHabits.length + 1) * 10));
+    setLoading(false);
+  }
+
+  async function submitAuth(event) {
+    event.preventDefault();
+    setMessage("");
+    setIsSaving(true);
+
+    const result = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
+
+    setIsSaving(false);
+    if (result.error) {
+      setMessage(result.error.message);
+      return;
+    }
+
+    setMessage("Dentro. Tu dia esta listo.");
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    setMessage("Sesion cerrada.");
+  }
+
+  function startWorkout() {
+    const workout = {
+      startedAt: Date.now(),
+      exerciseIndex: 0,
+      completedSets: {},
+      restEndsAt: null,
+      restDuration: 0,
+    };
+    setStoredWorkout(null);
+    setActiveWorkout(workout);
+    setMessage("");
+  }
+
+  function continueWorkout() {
+    if (!storedWorkout) return;
+    setActiveWorkout(storedWorkout);
+    setStoredWorkout(null);
+    setMessage("");
+  }
+
+  function startOrContinueWorkout() {
+    if (storedWorkout) continueWorkout();
+    else startWorkout();
+  }
+
+  function clearWorkoutState() {
+    localStorage.removeItem(ACTIVE_WORKOUT_KEY);
+    setStoredWorkout(null);
+    setActiveWorkout(null);
+    releaseWakeLock();
+  }
+
+  function markSet(source = "tap") {
+    setActiveWorkout((current) => {
+      if (!current) return current;
+      if (restLeftFor(current) > 0) return current;
+      const exercise = routinePlan.exercises[current.exerciseIndex];
+      const currentCount = current.completedSets[exercise.name] || 0;
+      const nextCount = Math.min(exercise.sets, currentCount + 1);
+      if (currentCount >= exercise.sets) return current;
+      const shouldRest = nextCount < exercise.sets;
+      return {
+        ...current,
+        completedSets: { ...current.completedSets, [exercise.name]: nextCount },
+        restDuration: shouldRest ? exercise.rest : 0,
+        restEndsAt: shouldRest ? Date.now() + exercise.rest * 1000 : null,
+        lastAction: source,
+      };
+    });
+  }
+
+  function skipRest() {
+    setActiveWorkout((current) => (current ? { ...current, restEndsAt: null, restDuration: 0 } : current));
+  }
+
+  function addRest(seconds = 30) {
+    setActiveWorkout((current) => {
+      if (!current?.restEndsAt) return current;
+      return { ...current, restEndsAt: current.restEndsAt + seconds * 1000, restDuration: (current.restDuration || 0) + seconds };
+    });
+  }
+
+  function moveExercise(direction) {
+    setActiveWorkout((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        exerciseIndex: Math.min(routinePlan.exercises.length - 1, Math.max(0, current.exerciseIndex + direction)),
+        restEndsAt: null,
+        restDuration: 0,
+      };
+    });
+  }
+
+  async function completeTrainingHabit() {
+    const trainingHabit = habits.find((habit) => habit.is_active && habit.category === "Entreno");
+    if (!trainingHabit) return;
+    await supabase.from("habit_logs").upsert(
+      {
+        habit_id: trainingHabit.id,
+        user_id: session.user.id,
+        date: localIso(),
+        count: safeNumber(trainingHabit.target_count),
+        status: "completed",
+      },
+      { onConflict: "habit_id,date" },
+    );
+  }
+
+  async function finishWorkout(status = "completed") {
+    if (!session?.user || !activeWorkout) return;
+
+    setIsSaving(true);
+    const totalSets = countCompletedSets(activeWorkout.completedSets);
+    const duration = Math.max(1, Math.round(workoutElapsedFor(activeWorkout) / 60));
+    const { error } = await supabase.from("workouts").insert({
+      user_id: session.user.id,
+      date: localIso(),
+      type: "strength",
+      status,
+      activity: routinePlan.title,
+      duration,
+      notes: `${totalSets} series registradas. ${status === "partial" ? "Entreno parcial." : "Entreno completo."}`,
+    });
+
+    if (!error && status === "completed") await completeTrainingHabit();
+
+    setIsSaving(false);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    clearWorkoutState();
+    setMessage(status === "partial" ? "Entreno parcial guardado." : "Entreno guardado y habito marcado.");
+    await loadData();
+  }
+
+  async function toggleHabit(habit) {
+    if (!session?.user || !habit?.id) return;
+    const date = localIso();
+    const existing = habitLogs.find((log) => log.habit_id === habit.id && log.date === date);
+
+    if (existing) {
+      const { error } = await supabase.from("habit_logs").delete().eq("id", existing.id).eq("user_id", session.user.id);
+      if (error) setMessage(error.message);
+    } else {
+      const { error } = await supabase.from("habit_logs").upsert(
+        {
+          habit_id: habit.id,
+          user_id: session.user.id,
+          date,
+          count: safeNumber(habit.target_count),
+          status: "completed",
+        },
+        { onConflict: "habit_id,date" },
+      );
+      if (error) setMessage(error.message);
+    }
+
+    await loadData();
+  }
+
+  async function saveHabit(event) {
+    event.preventDefault();
+    if (!session?.user || !habitForm.title.trim()) return;
+
+    setIsSaving(true);
+    const payload = {
+      user_id: session.user.id,
+      title: habitForm.title.trim().slice(0, 120),
+      category: habitForm.category,
+      color_key: habitForm.color_key,
+      frequency_type: habitForm.frequency_type,
+      days_of_week: habitForm.frequency_type === "weekly" ? habitForm.days_of_week : null,
+      target_count: safeNumber(habitForm.target_count),
+      target_unit: habitForm.target_unit.trim().slice(0, 24) || null,
+      is_active: Boolean(habitForm.is_active),
+      sort_order: Number(habitForm.sort_order) || habits.length * 10 + 10,
+    };
+
+    const result = habitForm.id
+      ? await supabase.from("habits").update(payload).eq("id", habitForm.id).eq("user_id", session.user.id)
+      : await supabase.from("habits").insert(payload);
+
+    setIsSaving(false);
+    if (result.error) {
+      setMessage(result.error.message);
+      return;
+    }
+
+    setMessage(habitForm.id ? "Habito actualizado." : "Habito creado.");
+    setHabitForm(blankHabitForm((habits.length + 1) * 10));
+    await loadData();
+  }
+
+  async function deleteHabit(habit) {
+    if (!session?.user || !habit?.id) return;
+    const { error } = await supabase.from("habits").delete().eq("id", habit.id).eq("user_id", session.user.id);
+    if (error) setMessage(error.message);
+    else {
+      setMessage("Habito eliminado.");
+      await loadData();
+    }
+  }
+
+  async function saveProfile(event) {
+    event.preventDefault();
+    if (!session?.user) return;
+
+    setIsSaving(true);
+    const payload = {
+      id: session.user.id,
+      display_name: profileDraft.display_name || displayNameFromSession(session),
+      primary_goal: profileDraft.primary_goal?.trim() || defaultProfile.primary_goal,
+      theme_key: profileDraft.theme_key || "calm",
+      portal_config: profileDraft.portal_config || defaultProfile.portal_config,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase.from("user_profiles").upsert(payload, { onConflict: "id" }).select("*").single();
+    setIsSaving(false);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    const nextProfile = profileWithFallback(data, session);
+    setProfile(nextProfile);
+    setProfileDraft(nextProfile);
+    setMessage("Ajustes guardados.");
+  }
+
+  async function saveMeasurement(event) {
+    event.preventDefault();
+    if (!session?.user) return;
+    setIsSaving(true);
+
+    const { error } = await supabase.from("measurements").insert({
+      user_id: session.user.id,
+      date: measureForm.date || localIso(),
+      weight: measureForm.weight ? Number(measureForm.weight) : null,
+      waist: measureForm.waist ? Number(measureForm.waist) : null,
+      note: measureForm.note.trim() || null,
+    });
+
+    setIsSaving(false);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setMessage("Check-in guardado.");
+    setMeasureForm((current) => ({ ...current, note: "" }));
+    await loadData();
+  }
+
+  async function uploadPhotos(event) {
+    const files = [...(event.target.files || [])];
+    if (!files.length || !session?.user) return;
+
+    setIsSaving(true);
+    setMessage("Guardando imagenes...");
+
+    if (!photoStorage.ready) {
+      const ready = await setupPhotoStorage();
+      if (!ready) {
+        setIsSaving(false);
+        event.target.value = "";
+        return;
+      }
+    }
+
+    for (const sourceFile of files) {
+      try {
+        const { file, extension } = await normalizePhoto(sourceFile);
+        const formData = new FormData();
+        formData.append("file", file, `progress.${extension}`);
+        formData.append("date", photoDate || localIso());
+        formData.append("note", photoNote.trim());
+
+        const response = await fetch("/api/photos", {
+          method: "POST",
+          body: formData,
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || "No pude guardar la imagen.");
+      } catch (error) {
+        setMessage(`No pude guardar ${sourceFile.name}: ${error.message}`);
+        setIsSaving(false);
+        event.target.value = "";
+        return;
+      }
+    }
+
+    setIsSaving(false);
+    setPhotoNote("");
+    event.target.value = "";
+    setMessage("Imagenes guardadas.");
+    await loadData();
   }
 
   async function setupPhotoStorage() {
@@ -399,12 +698,32 @@ export default function HomePage() {
       if (!response.ok || !result.ok) throw new Error(result.error || "No pude preparar el almacenamiento.");
 
       setPhotoStorage({ checked: true, ready: true, isSettingUp: false, message: result.created ? "Almacenamiento preparado." : "Almacenamiento listo." });
-      setMessage(result.created ? "Almacenamiento de imágenes preparado." : "Almacenamiento de imágenes listo.");
+      setMessage(result.created ? "Almacenamiento de imagenes preparado." : "Almacenamiento de imagenes listo.");
       return true;
     } catch (error) {
       setPhotoStorage({ checked: true, ready: false, isSettingUp: false, message: error.message });
       setMessage(error.message);
       return false;
+    }
+  }
+
+  async function deleteWorkout(id) {
+    const { error } = await supabase.from("workouts").delete().eq("id", id);
+    if (error) setMessage(error.message);
+    else await loadData();
+  }
+
+  async function deletePhoto(photo) {
+    const response = await fetch("/api/photos", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: photo.id }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) setMessage(result.error || "No pude eliminar la foto.");
+    else {
+      setMessage("Foto eliminada.");
+      await loadData();
     }
   }
 
@@ -492,271 +811,44 @@ export default function HomePage() {
     }
   }
 
-  async function loadData() {
-    if (!session?.user) return;
-
-    setLoading(true);
-    const workoutResult = await supabase.from("workouts").select("*").order("date", { ascending: false }).order("created_at", { ascending: false });
-
-    if (workoutResult.error) {
-      setMessage("No pude cargar tus entrenos. Revisa la conexión del proyecto.");
-      setLoading(false);
-      return;
-    }
-
-    const [measureResult, photoResult] = await Promise.all([
-      supabase.from("measurements").select("*").order("date", { ascending: true }).order("created_at", { ascending: true }),
-      fetch("/api/photos").then((response) => response.json()).catch((error) => ({ ok: false, error: error.message })),
-    ]);
-
-    setWorkouts(workoutResult.data || []);
-    setMeasurements(measureResult.error ? [] : measureResult.data || []);
-    setPhotos(photoResult.ok ? photoResult.photos || [] : []);
-    setPhotoStorage({
-      checked: true,
-      ready: Boolean(photoResult.storageReady),
-      isSettingUp: false,
-      message: photoResult.storageReady ? "" : "El almacenamiento de imágenes aún no está preparado.",
-    });
-    setRoutinePlan(fallbackWorkoutPlan);
-
-    try {
-      const routineResult = await supabase
-        .from("routine_templates")
-        .select("*, routine_exercises(*)")
-        .eq("active", true)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!routineResult.error && routineResult.data) {
-        setRoutinePlan(normalizeRoutine(routineResult.data));
-      }
-    } catch {
-      setRoutinePlan(fallbackWorkoutPlan);
-    }
-
-    setLoading(false);
+  function selectDate(iso) {
+    setMeasureForm((current) => ({ ...current, date: iso }));
+    setPhotoDate(iso);
+    setActiveView("progress");
+    window.requestAnimationFrame(() => document.getElementById("checkin")?.scrollIntoView({ behavior: "smooth" }));
   }
 
-  async function submitAuth(event) {
-    event.preventDefault();
-    setMessage("");
-    setIsSaving(true);
-
-    const result = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
-
-    setIsSaving(false);
-    if (result.error) {
-      setMessage(result.error.message);
-      return;
-    }
-
-    setMessage("Dentro. A sumar.");
-  }
-
-  async function signOut() {
-    await supabase.auth.signOut();
-    setMessage("Sesión cerrada.");
-  }
-
-  function startWorkout() {
-    const workout = {
-      startedAt: Date.now(),
-      exerciseIndex: 0,
-      completedSets: {},
-      restEndsAt: null,
-      restDuration: 0,
-    };
-    setStoredWorkout(null);
-    setActiveWorkout(workout);
-    setMessage("");
-  }
-
-  function continueWorkout() {
-    if (!storedWorkout) return;
-    setActiveWorkout(storedWorkout);
-    setStoredWorkout(null);
-    setMessage("");
-  }
-
-  function clearWorkoutState() {
-    localStorage.removeItem(ACTIVE_WORKOUT_KEY);
-    setStoredWorkout(null);
-    setActiveWorkout(null);
-    releaseWakeLock();
-  }
-
-  function markSet(source = "tap") {
-    setActiveWorkout((current) => {
-      if (!current) return current;
-      if (restLeftFor(current) > 0) return current;
-      const exercise = routinePlan.exercises[current.exerciseIndex];
-      const currentCount = current.completedSets[exercise.name] || 0;
-      const nextCount = Math.min(exercise.sets, currentCount + 1);
-      if (currentCount >= exercise.sets) return current;
-      const shouldRest = nextCount < exercise.sets;
-      return {
-        ...current,
-        completedSets: { ...current.completedSets, [exercise.name]: nextCount },
-        restDuration: shouldRest ? exercise.rest : 0,
-        restEndsAt: shouldRest ? Date.now() + exercise.rest * 1000 : null,
-        lastAction: source,
-      };
-    });
-  }
-
-  function skipRest() {
-    setActiveWorkout((current) => (current ? { ...current, restEndsAt: null, restDuration: 0 } : current));
-  }
-
-  function addRest(seconds = 30) {
-    setActiveWorkout((current) => {
-      if (!current?.restEndsAt) return current;
-      return { ...current, restEndsAt: current.restEndsAt + seconds * 1000, restDuration: (current.restDuration || 0) + seconds };
-    });
-  }
-
-  function moveExercise(direction) {
-    setActiveWorkout((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        exerciseIndex: Math.min(routinePlan.exercises.length - 1, Math.max(0, current.exerciseIndex + direction)),
-        restEndsAt: null,
-        restDuration: 0,
-      };
-    });
-  }
-
-  async function finishWorkout(status = "completed") {
-    if (!session?.user || !activeWorkout) return;
-
-    setIsSaving(true);
-    const totalSets = countCompletedSets(activeWorkout.completedSets);
-    const duration = Math.max(1, Math.round(workoutElapsedFor(activeWorkout) / 60));
-    const { error } = await supabase.from("workouts").insert({
-      user_id: session.user.id,
-      date: localIso(),
-      type: "strength",
-      status,
-      activity: routinePlan.title,
-      duration,
-      notes: `${totalSets} series registradas. ${status === "partial" ? "Entreno parcial." : "Entreno completo."}`,
-    });
-
-    setIsSaving(false);
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    clearWorkoutState();
-    setMessage(status === "partial" ? "Entreno parcial guardado. También cuenta." : "Entreno guardado. Día sumado.");
-    loadData();
-  }
-
-  async function saveMeasurement(event) {
-    event.preventDefault();
-    if (!session?.user) return;
-    setIsSaving(true);
-
-    const { error } = await supabase.from("measurements").insert({
-      user_id: session.user.id,
-      date: measureForm.date || localIso(),
-      weight: measureForm.weight ? Number(measureForm.weight) : null,
-      waist: measureForm.waist ? Number(measureForm.waist) : null,
-      note: measureForm.note.trim() || null,
-    });
-
-    setIsSaving(false);
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setMessage("Check-in guardado. Las medidas van por fecha, no dependen de terminar el entreno.");
-    setMeasureForm((current) => ({ ...current, note: "" }));
-    loadData();
-  }
-
-  async function uploadPhotos(event) {
-    const files = [...(event.target.files || [])];
-    if (!files.length || !session?.user) return;
-
-    setIsSaving(true);
-    setMessage("Guardando imágenes...");
-
-    if (!photoStorage.ready) {
-      const ready = await setupPhotoStorage();
-      if (!ready) {
-        setIsSaving(false);
-        event.target.value = "";
-        return;
-      }
-    }
-
-    for (const sourceFile of files) {
-      try {
-        const { file, extension, contentType } = await normalizePhoto(sourceFile);
-        const formData = new FormData();
-        formData.append("file", file, `progress.${extension}`);
-        formData.append("date", photoDate || localIso());
-        formData.append("note", photoNote.trim());
-
-        const response = await fetch("/api/photos", {
-          method: "POST",
-          body: formData,
-        });
-        const result = await response.json();
-        if (!response.ok || !result.ok) throw new Error(result.error || "No pude guardar la imagen.");
-      } catch (error) {
-        setMessage(`No pude guardar ${sourceFile.name}: ${error.message}`);
-        setIsSaving(false);
-        event.target.value = "";
-        return;
-      }
-    }
-
-    setIsSaving(false);
-    setPhotoNote("");
-    event.target.value = "";
-    setMessage("Imágenes guardadas.");
-    loadData();
-  }
-
-  async function deleteWorkout(id) {
-    const { error } = await supabase.from("workouts").delete().eq("id", id);
-    if (error) setMessage(error.message);
-    else loadData();
-  }
-
-  async function deletePhoto(photo) {
-    const response = await fetch("/api/photos", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: photo.id }),
-    });
-    const result = await response.json();
-    if (!response.ok || !result.ok) setMessage(result.error || "No pude eliminar la foto.");
-    else {
-      setMessage("Foto eliminada.");
-      loadData();
-    }
-  }
-
+  const today = localIso();
+  const displayName = profile?.display_name || displayNameFromSession(session);
+  const logsByKey = Object.fromEntries(habitLogs.map((log) => [logKey(log.habit_id, log.date), log]));
+  const dueHabits = dueHabitsForDate(habits, today);
+  const completedToday = dueHabits.filter((habit) => logsByKey[logKey(habit.id, today)]).length;
+  const completionRate = dueHabits.length ? Math.round((completedToday / dueHabits.length) * 100) : 0;
   const completedWorkouts = workouts.filter((item) => item.status === "completed");
+  const todayWorkout = workouts.find((item) => item.date === today && item.type === "strength");
   const latestMeasurement = measurements.at(-1);
-  const todayWorkout = workouts.find((item) => item.date === localIso() && item.type === "strength");
-  const displayName = displayNameFromSession(session);
-  const trackingStart = firstTrackingDate(workouts, measurements, photos);
-  const weekWorkouts = workouts.filter((item) => {
-    const diff = (new Date(`${localIso()}T12:00:00`) - new Date(`${item.date}T12:00:00`)) / 86400000;
-    return diff >= 0 && diff < 7 && item.status === "completed";
-  });
+  const weekCompleted = habitLogs.filter((item) => {
+    const diff = (new Date(`${today}T12:00:00`) - new Date(`${item.date}T12:00:00`)) / 86400000;
+    return diff >= 0 && diff < 7;
+  }).length;
+  const trackingStart = firstTrackingDate(workouts, measurements, photos, habitLogs);
   const calendarDays = getMonthDays(month);
   const workoutDates = new Set(completedWorkouts.map((item) => item.date));
-  const today = localIso();
+  const habitLogDates = new Set(habitLogs.map((item) => item.date));
+  const achievementProgress = getAchievementProgress({ habits, habitLogs, workouts, measurements, photos });
+  const unlockedAchievements = getUnlockedAchievements(achievementProgress, achievements);
+  const nextAchievement = [...unlockedAchievements]
+    .filter((achievement) => !achievement.unlocked)
+    .sort((a, b) => b.percent - a.percent || a.target - b.target)[0] || null;
+  const currentStreak = getGlobalStreak(habitLogs, workouts);
+  const longestStreak = getLongestStreak(habitLogs, workouts);
+  const perfectWeekCount = achievementProgress.find((achievement) => achievement.key === "perfect_week")?.current || 0;
+  const motivation = getMotivationMessage({
+    completionRate,
+    dueHabitsCount: dueHabits.length,
+    currentStreak,
+    nextAchievement,
+  });
   const activeExercise = activeWorkout ? routinePlan.exercises[activeWorkout.exerciseIndex] : null;
   const activeDoneSets = activeWorkout && activeExercise ? activeWorkout.completedSets[activeExercise.name] || 0 : 0;
   const activeRestLeft = restLeftFor(activeWorkout, now);
@@ -768,293 +860,138 @@ export default function HomePage() {
       : null;
 
   if (loading && !session) {
-    return <main className="loading-screen">Preparando tu panel...</main>;
+    return <main className="loading-screen">Preparando tu portal...</main>;
   }
 
   if (!session) {
     return (
-      <main className="auth-shell">
-        <section className="auth-hero">
-          <p className="eyebrow">Summer Body</p>
-          <h1>Tu plan físico, ordenado y siempre a mano.</h1>
-          <p>
-            Entrena, registra tu progreso y mantén una racha visible sin depender de hojas de cálculo.
-          </p>
-          <ul>
-            <li>Rutina guiada de 30-40 minutos.</li>
-            <li>Calendario para ver días hechos y fallados.</li>
-            <li>Medidas e imágenes de progreso en un solo sitio.</li>
-          </ul>
-        </section>
-
-        <form className="auth-panel" onSubmit={submitAuth}>
-          <span className="panel-kicker">Acceso</span>
-          <label>
-            Email
-            <input type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required />
-          </label>
-          <label>
-            Contraseña
-            <input type="password" minLength={6} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required />
-          </label>
-          <button className="primary-action" disabled={isSaving}>
-            {isSaving ? "Un segundo..." : "Entrar"}
-          </button>
-          <p className="access-note">Acceso privado. Las cuentas se activan manualmente.</p>
-          {message && <p className="form-message">{message}</p>}
-        </form>
-      </main>
+      <AuthScreen
+        authEmail={authEmail}
+        authPassword={authPassword}
+        isSaving={isSaving}
+        message={message}
+        onEmailChange={setAuthEmail}
+        onPasswordChange={setAuthPassword}
+        onSubmit={submitAuth}
+      />
     );
   }
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Summer Body</p>
-          <h1>Panel de {displayName}.</h1>
-        </div>
-        <div className="topbar-actions">
-          <span className="user-pill">{displayName.slice(0, 1)}</span>
-          <button className="ghost-action compact" onClick={signOut}>Salir</button>
-        </div>
-      </header>
+    <main className={`app-shell theme-${profileDraft?.theme_key || profile?.theme_key || "calm"}`}>
+      <AppHeader displayName={displayName} activeView={activeView} onViewChange={setActiveView} onSignOut={signOut} />
 
       {message && <div className="toast">{message}</div>}
 
-      <section className="hero-grid">
-        <div className="today-block">
-          <span className="panel-kicker">Hoy</span>
-          <h2>{todayWorkout ? `${displayName}, fuerza fichada.` : `${displayName}, toca ${routinePlan.title}.`}</h2>
-          <p>{todayWorkout ? "El trabajo principal está hecho. Si quieres algo extra, que sea suave y fácil de recuperar." : routinePlan.promise}</p>
-          <div className="focus-row">
-            <span>{routinePlan.duration}</span>
-            <span>{routinePlan.exercises.length} ejercicios</span>
-            <span>Inicio {formatShortDate(trackingStart)}</span>
-          </div>
-          <div className="hero-actions">
-            <button className="primary-action" onClick={storedWorkout ? continueWorkout : startWorkout}>{storedWorkout ? "Continuar entreno" : "Comenzar entreno"}</button>
-            <button className="ghost-action" onClick={() => document.getElementById("checkin")?.scrollIntoView({ behavior: "smooth" })}>
-              Check-in
-            </button>
-          </div>
-        </div>
-
-        <div className="stat-column">
-          <div><strong>{completedWorkouts.length}</strong><span>sesiones</span></div>
-          <div><strong>{streakFor(workouts)}</strong><span>racha</span></div>
-          <div><strong>{weekWorkouts.length}</strong><span>últimos 7 días</span></div>
-          <div><strong>{latestMeasurement?.weight ? `${latestMeasurement.weight} kg` : "—"}</strong><span>último peso</span></div>
-        </div>
-      </section>
-
-      <section className="workout-strip">
-        {routinePlan.exercises.map((exercise, index) => (
-          <article key={exercise.name} className="exercise-tile">
-            <img src={exercise.image} alt={exercise.name} />
-            <div>
-              <span>{index + 1}</span>
-              <h3>{exercise.name}</h3>
-              <p>{exercise.sets} x {exercise.reps} · descanso {exercise.rest}s</p>
-              {exercise.referenceUrl && <a className="reference-link" href={exercise.referenceUrl} target="_blank" rel="noreferrer">Ver técnica</a>}
-            </div>
-          </article>
-        ))}
-      </section>
-
-      <section id="checkin" className="split-section">
-        <form className="plain-panel" onSubmit={saveMeasurement}>
-          <span className="panel-kicker">Check-in corporal</span>
-          <h2>Peso, cintura y nota.</h2>
-          <p>Hazlo antes de entrenar si puedes. Se guarda por fecha, así que no depende de completar la sesión.</p>
-          <div className="field-grid">
-            <label>Fecha<input type="date" value={measureForm.date} onChange={(event) => setMeasureForm({ ...measureForm, date: event.target.value })} /></label>
-            <label>Peso kg<input inputMode="decimal" value={measureForm.weight} onChange={(event) => setMeasureForm({ ...measureForm, weight: event.target.value })} placeholder="100" /></label>
-            <label>Cintura cm<input inputMode="decimal" value={measureForm.waist} onChange={(event) => setMeasureForm({ ...measureForm, waist: event.target.value })} placeholder="Ombligo" /></label>
-          </div>
-          <label>Nota<textarea value={measureForm.note} onChange={(event) => setMeasureForm({ ...measureForm, note: event.target.value })} placeholder="Sueño, alcohol, sensaciones..." /></label>
-          <button className="primary-action" disabled={isSaving}>Guardar check-in</button>
-        </form>
-
-        <div className="plain-panel">
-          <span className="panel-kicker">Progreso visual</span>
-          <h2>Mismo sitio, misma luz.</h2>
-          <p>Añade una referencia frontal o lateral cada pocas semanas para comparar con calma.</p>
-          {photoStorage.checked && !photoStorage.ready && (
-            <div className="storage-warning">
-              <strong>Almacenamiento pendiente</strong>
-              <span>{photoStorage.message || "Prepara el espacio de imágenes antes de guardar fotos."}</span>
-              <button className="ghost-action compact" type="button" onClick={setupPhotoStorage} disabled={photoStorage.isSettingUp}>
-                {photoStorage.isSettingUp ? "Preparando..." : "Preparar almacenamiento"}
-              </button>
-            </div>
-          )}
-          <div className="field-grid">
-            <label>Fecha<input type="date" value={photoDate} onChange={(event) => setPhotoDate(event.target.value)} /></label>
-            <label>Nota<input value={photoNote} onChange={(event) => setPhotoNote(event.target.value)} placeholder="Frontal, mañana..." /></label>
-          </div>
-          <label className="upload-zone">
-            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={uploadPhotos} disabled={isSaving} />
-            <strong>Elegir imágenes</strong>
-            <span>Formato móvil o web</span>
-          </label>
-        </div>
-      </section>
-
-      <section className="split-section">
-        <div className="plain-panel">
-          <div className="section-line">
-            <div>
-              <span className="panel-kicker">Tendencia</span>
-              <h2>Medidas</h2>
-            </div>
-          </div>
-          <div className="trend-grid">
-            <div>
-              <span>Peso</span>
-              <svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={trendPoints(measurements, "weight")} /></svg>
-            </div>
-            <div>
-              <span>Cintura</span>
-              <svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={trendPoints(measurements, "waist")} /></svg>
-            </div>
-          </div>
-          <div className="mini-history">
-            {measurements.slice(-5).reverse().map((item) => (
-              <p key={item.id}><strong>{formatShortDate(item.date)}</strong> {item.weight || "—"} kg · {item.waist || "—"} cm</p>
-            ))}
-            {!measurements.length && <p>Aún no hay medidas. El primer dato ya da dirección.</p>}
-          </div>
-        </div>
-
-        <div className="plain-panel">
-          <span className="panel-kicker">Express</span>
-          <h2>Cuando solo tengas 15 min.</h2>
-          <ul className="quick-list">
-            {quickPlan.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </div>
-      </section>
-
-      <section className="calendar-section">
-        <div className="section-line">
-          <div>
-            <span className="panel-kicker">Calendario</span>
-            <h2>{monthLabel(month)}</h2>
-          </div>
-          <div className="month-controls">
-            <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>←</button>
-            <button onClick={() => setMonth(new Date())}>Hoy</button>
-            <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>→</button>
-          </div>
-        </div>
-        <div className="weekday-row">{["L", "M", "X", "J", "V", "S", "D"].map((day) => <span key={day}>{day}</span>)}</div>
-        <div className="month-grid">
-          {calendarDays.map((date) => {
-            const iso = localIso(date);
-            const inMonth = date.getMonth() === month.getMonth();
-            const done = workoutDates.has(iso);
-            const beforeStart = iso < trackingStart;
-            const missed = inMonth && iso < today && iso >= trackingStart && !done;
-            return (
-              <button
-                key={iso}
-                className={`month-day ${inMonth ? "" : "muted"} ${beforeStart ? "before-start" : ""} ${done ? "done" : ""} ${missed ? "missed" : ""} ${iso === today ? "today" : ""}`}
-                onClick={() => {
-                  setMeasureForm((current) => ({ ...current, date: iso }));
-                  setPhotoDate(iso);
-                  document.getElementById("checkin")?.scrollIntoView({ behavior: "smooth" });
-                }}
-              >
-                <strong>{date.getDate()}</strong>
-                <span>{done ? "Hecho" : beforeStart ? "Sin plan" : missed ? "Fallado" : "Pendiente"}</span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="split-section">
-        <div className="plain-panel">
-          <span className="panel-kicker">Historial</span>
-          <h2>Últimos entrenos</h2>
-          <div className="history-list">
-            {workouts.slice(0, 8).map((item) => (
-              <article key={item.id}>
-                <div><strong>{formatShortDate(item.date)}</strong><span>{item.activity} · {item.duration || "—"} min</span></div>
-                <button onClick={() => deleteWorkout(item.id)}>Borrar</button>
-              </article>
-            ))}
-            {!workouts.length && <p>No hay entrenos todavía. Empieza con una sesión honesta, sin épica.</p>}
-          </div>
-        </div>
-
-        <div className="plain-panel">
-          <span className="panel-kicker">Progreso visual</span>
-          <h2>Galería</h2>
-          <div className="photo-grid">
-            {photos.map((photo) => (
-              <figure key={photo.id}>
-                {photo.signedUrl ? <img src={photo.signedUrl} alt={photo.note || "Foto de progreso"} /> : <div className="photo-fallback">Sin preview</div>}
-                <figcaption>{formatShortDate(photo.date)} · {photo.note || "sin nota"}</figcaption>
-                <button onClick={() => deletePhoto(photo)}>Eliminar</button>
-              </figure>
-            ))}
-            {!photos.length && <p>Sin imágenes todavía. Mejor pocas y comparables que muchas improvisadas.</p>}
-          </div>
-        </div>
-      </section>
-
-      {activeWorkout && (
-        <div className="workout-modal">
-          <div className="workout-player">
-            {countdownCue && <div className="countdown-overlay">{countdownCue}</div>}
-            <header className="player-header">
-              <div>
-                <span className="panel-kicker">Ejercicio {activeWorkout.exerciseIndex + 1} / {routinePlan.exercises.length}</span>
-                <strong>{secondsLabel(activeElapsed)}</strong>
-              </div>
-              <div className="player-status">
-                <span>{wakeLockStatus === "active" ? "Pantalla activa" : wakeLockStatus === "unsupported" ? "Sin Wake Lock" : "Pantalla normal"}</span>
-                <button type="button" onClick={toggleSound}>{soundEnabled ? "Sonido ON" : "Sonido OFF"}</button>
-              </div>
-            </header>
-
-            {activeExercise && (
-              <>
-                <div className="player-media"><img src={activeExercise.image} alt={activeExercise.name} /></div>
-                <div className="player-content">
-                  <h2>{activeExercise.name}</h2>
-                  <p>{activeExercise.cue}</p>
-                  <div className="set-counter">
-                    {Array.from({ length: activeExercise.sets }, (_, index) => <i key={index} className={index < activeDoneSets ? "on" : ""} />)}
-                  </div>
-                  <strong className="rep-line">{activeExercise.sets} x {activeExercise.reps}</strong>
-                  <div className={`timer-box ${activeRestLeft > 0 ? "is-resting" : ""}`}>
-                    <span>{activeRestLeft > 0 ? "Descanso" : "Listo para serie"}</span>
-                    <strong>{secondsLabel(activeRestLeft)}</strong>
-                  </div>
-                  <div className="player-toggles">
-                    <button type="button" onClick={toggleShake} className={shakeEnabled ? "is-on" : ""}>{shakeEnabled ? "Agitar ON" : "Agitar para serie"}</button>
-                    {motionMessage && <span>{motionMessage}</span>}
-                  </div>
-                </div>
-              </>
-            )}
-
-            <footer className="player-footer">
-              <button className="primary-action" onClick={() => markSet("tap")} disabled={!activeExercise || activeDoneSets >= activeExercise.sets || activeRestLeft > 0}>Serie hecha</button>
-              <button className="ghost-action" onClick={skipRest} disabled={activeRestLeft <= 0}>Saltar</button>
-              <button className="ghost-action" onClick={() => addRest(30)} disabled={activeRestLeft <= 0}>+30s</button>
-              <button className="ghost-action" onClick={() => moveExercise(-1)} disabled={activeWorkout.exerciseIndex === 0}>Anterior</button>
-              <button className="ghost-action" onClick={() => moveExercise(1)} disabled={activeWorkout.exerciseIndex === routinePlan.exercises.length - 1}>Siguiente</button>
-              <button className="ghost-action" onClick={() => finishWorkout("partial")} disabled={isSaving}>Guardar parcial</button>
-              <button className="ghost-action" onClick={() => finishWorkout("completed")} disabled={isSaving}>Terminar</button>
-              <button className="ghost-action" onClick={clearWorkoutState}>Cerrar</button>
-            </footer>
-          </div>
-        </div>
+      {activeView === "today" && (
+        <>
+          <TodayDashboard
+            achievements={unlockedAchievements}
+            completionRate={completionRate}
+            completedToday={completedToday}
+            displayName={displayName}
+            dueHabits={dueHabits}
+            latestMeasurement={latestMeasurement}
+            logsByKey={logsByKey}
+            motivation={motivation}
+            routinePlan={routinePlan}
+            stats={{ streak: currentStreak, longestStreak, nextAchievement, perfectWeekCount, weekCompleted }}
+            storedWorkout={storedWorkout}
+            today={today}
+            todayWorkout={todayWorkout}
+            onSelectView={setActiveView}
+            onStartWorkout={startOrContinueWorkout}
+            onToggleHabit={toggleHabit}
+          />
+          <CalendarSection
+            calendarDays={calendarDays}
+            habitLogDates={habitLogDates}
+            month={month}
+            today={today}
+            trackingStart={trackingStart}
+            workoutDates={workoutDates}
+            onMonthChange={setMonth}
+            onSelectDate={selectDate}
+          />
+        </>
       )}
+
+      {activeView === "habits" && (
+        <HabitsSection
+          habitForm={habitForm}
+          habits={habits}
+          logsByKey={logsByKey}
+          today={today}
+          onCancelEdit={() => setHabitForm(blankHabitForm((habits.length + 1) * 10))}
+          onChangeForm={(patch) => setHabitForm((current) => ({ ...current, ...patch }))}
+          onDeleteHabit={deleteHabit}
+          onEditHabit={(habit) => setHabitForm(habitToForm(habit))}
+          onSubmitHabit={saveHabit}
+          onToggleHabit={toggleHabit}
+        />
+      )}
+
+      {activeView === "training" && (
+        <TrainingSection
+          routinePlan={routinePlan}
+          storedWorkout={storedWorkout}
+          todayWorkout={todayWorkout}
+          workouts={workouts}
+          onDeleteWorkout={deleteWorkout}
+          onStartWorkout={startOrContinueWorkout}
+        />
+      )}
+
+      {activeView === "progress" && (
+        <ProgressSection
+          measureForm={measureForm}
+          measurements={measurements}
+          photoDate={photoDate}
+          photoNote={photoNote}
+          photos={photos}
+          photoStorage={photoStorage}
+          isSaving={isSaving}
+          onDeletePhoto={deletePhoto}
+          onMeasureChange={(patch) => setMeasureForm((current) => ({ ...current, ...patch }))}
+          onPhotoDateChange={setPhotoDate}
+          onPhotoNoteChange={setPhotoNote}
+          onSaveMeasurement={saveMeasurement}
+          onSetupPhotoStorage={setupPhotoStorage}
+          onUploadPhotos={uploadPhotos}
+        />
+      )}
+
+      {activeView === "settings" && (
+        <SettingsSection
+          profile={profileDraft}
+          activeHabits={habits.filter((habit) => habit.is_active)}
+          onChangeProfile={(patch) => setProfileDraft((current) => ({ ...current, ...patch }))}
+          onSaveProfile={saveProfile}
+        />
+      )}
+
+      <WorkoutPlayer
+        activeDoneSets={activeDoneSets}
+        activeElapsed={activeElapsed}
+        activeExercise={activeExercise}
+        activeRestLeft={activeRestLeft}
+        activeWorkout={activeWorkout}
+        countdownCue={countdownCue}
+        isSaving={isSaving}
+        motionMessage={motionMessage}
+        routinePlan={routinePlan}
+        shakeEnabled={shakeEnabled}
+        soundEnabled={soundEnabled}
+        wakeLockStatus={wakeLockStatus}
+        onAddRest={addRest}
+        onClear={clearWorkoutState}
+        onFinish={finishWorkout}
+        onMarkSet={markSet}
+        onMoveExercise={moveExercise}
+        onSkipRest={skipRest}
+        onToggleShake={toggleShake}
+        onToggleSound={toggleSound}
+      />
     </main>
   );
 }

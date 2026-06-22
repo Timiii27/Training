@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Summer Body",
-  description: "Plan diario, progreso corporal y calendario de constancia.",
+  title: "Portal Diario",
+  description: "Portal privado de habitos, entrenamiento y progreso personal.",
 };
 
 export default function RootLayout({ children }) {
