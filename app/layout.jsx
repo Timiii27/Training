@@ -2,7 +2,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "Summer Body",
-  description: "Entrenamiento, medidas y fotos de progreso con Supabase.",
+  description: "Plan diario, progreso corporal y calendario de constancia.",
 };
 
 export default function RootLayout({ children }) {

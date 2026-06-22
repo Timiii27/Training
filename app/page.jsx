@@ -216,7 +216,7 @@ export default function HomePage() {
     ]);
 
     if (workoutResult.error || measureResult.error || photoResult.error) {
-      setMessage("No pude cargar datos. Revisa que hayas ejecutado el SQL de Supabase.");
+      setMessage("No pude cargar tus datos. Revisa la conexión del proyecto.");
       setLoading(false);
       return;
     }
@@ -242,7 +242,12 @@ export default function HomePage() {
     const payload = { email: authEmail.trim(), password: authPassword };
     const result =
       authMode === "sign-up"
-        ? await supabase.auth.signUp(payload)
+        ? await supabase.auth.signUp({
+            ...payload,
+            options: {
+              emailRedirectTo: `${window.location.origin}/auth/callback`,
+            },
+          })
         : await supabase.auth.signInWithPassword(payload);
 
     setIsSaving(false);
@@ -251,7 +256,7 @@ export default function HomePage() {
       return;
     }
 
-    setMessage(authMode === "sign-up" ? "Cuenta creada. Si Supabase pide confirmación, revisa el email." : "Dentro. A sumar.");
+    setMessage(authMode === "sign-up" ? "Cuenta creada. Revisa tu correo para activarla." : "Dentro. A sumar.");
   }
 
   async function signOut() {
@@ -350,7 +355,7 @@ export default function HomePage() {
     if (!files.length || !session?.user) return;
 
     setIsSaving(true);
-    setMessage("Subiendo fotos...");
+    setMessage("Guardando imágenes...");
 
     for (const sourceFile of files) {
       try {
@@ -367,7 +372,7 @@ export default function HomePage() {
         });
         if (insert.error) throw insert.error;
       } catch (error) {
-        setMessage(`No pude subir ${sourceFile.name}: ${error.message}`);
+        setMessage(`No pude guardar ${sourceFile.name}: ${error.message}`);
         setIsSaving(false);
         event.target.value = "";
         return;
@@ -377,7 +382,7 @@ export default function HomePage() {
     setIsSaving(false);
     setPhotoNote("");
     event.target.value = "";
-    setMessage("Fotos guardadas en Supabase Storage.");
+    setMessage("Imágenes guardadas.");
     loadData();
   }
 
@@ -417,14 +422,14 @@ export default function HomePage() {
       <main className="auth-shell">
         <section className="auth-hero">
           <p className="eyebrow">Summer Body</p>
-          <h1>Tu entrenamiento y tus fotos, con usuario propio.</h1>
+          <h1>Tu plan físico, ordenado y siempre a mano.</h1>
           <p>
-            Entra, registra tu sesión diaria de pecho y abdomen, guarda peso/cintura y sube fotos privadas en Supabase.
+            Entrena, registra tu progreso y mantén una racha visible sin depender de hojas de cálculo.
           </p>
           <ul>
             <li>Rutina guiada de 30-40 minutos.</li>
             <li>Calendario para ver días hechos y fallados.</li>
-            <li>Fotos y medidas en el mismo sitio.</li>
+            <li>Medidas e imágenes de progreso en un solo sitio.</li>
           </ul>
         </section>
 
@@ -511,17 +516,17 @@ export default function HomePage() {
         </form>
 
         <div className="plain-panel">
-          <span className="panel-kicker">Fotos</span>
+          <span className="panel-kicker">Progreso visual</span>
           <h2>Mismo sitio, misma luz.</h2>
-          <p>Sube frontal/lateral cada 2-4 semanas. HEIC se convierte a JPG antes de subirse.</p>
+          <p>Añade una referencia frontal o lateral cada pocas semanas para comparar con calma.</p>
           <div className="field-grid">
             <label>Fecha<input type="date" value={photoDate} onChange={(event) => setPhotoDate(event.target.value)} /></label>
             <label>Nota<input value={photoNote} onChange={(event) => setPhotoNote(event.target.value)} placeholder="Frontal, mañana..." /></label>
           </div>
           <label className="upload-zone">
             <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={uploadPhotos} />
-            <strong>Elegir fotos</strong>
-            <span>JPG, PNG, WEBP o HEIC</span>
+            <strong>Elegir imágenes</strong>
+            <span>Formato móvil o web</span>
           </label>
         </div>
       </section>
@@ -615,7 +620,7 @@ export default function HomePage() {
 
         <div className="plain-panel">
           <span className="panel-kicker">Progreso visual</span>
-          <h2>Fotos</h2>
+          <h2>Galería</h2>
           <div className="photo-grid">
             {photos.map((photo) => (
               <figure key={photo.id}>
@@ -624,7 +629,7 @@ export default function HomePage() {
                 <button onClick={() => deletePhoto(photo)}>Eliminar</button>
               </figure>
             ))}
-            {!photos.length && <p>Sin fotos aún. Mejor pocas y comparables que muchas improvisadas.</p>}
+            {!photos.length && <p>Sin imágenes todavía. Mejor pocas y comparables que muchas improvisadas.</p>}
           </div>
         </div>
       </section>

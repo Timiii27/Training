@@ -1,6 +1,6 @@
-# Summer Body · Training Log
+# Summer Body
 
-App Next.js para seguir una rutina simple de pecho y abdomen, guardar entrenos, registrar peso/cintura y subir fotos privadas con Supabase.
+App de seguimiento físico para entrenar, registrar progreso y ver continuidad sin depender de hojas de cálculo.
 
 ## Enfoque actual
 
@@ -8,7 +8,7 @@ App Next.js para seguir una rutina simple de pecho y abdomen, guardar entrenos, 
 - Un modo express de `15 min` para días con poco tiempo.
 - Check-in corporal independiente del entrenamiento: puedes medir peso/cintura antes de entrenar y completar la sesión después.
 - Calendario mensual para ver días hechos, pendientes y fallados.
-- Fotos en Supabase Storage privado. Los HEIC se convierten a JPG en el navegador antes de subir.
+- Imágenes de progreso comparables en el mismo panel.
 
 ## Desarrollo local
 
@@ -41,7 +41,10 @@ En Vercel añade las mismas variables en `Project Settings -> Environment Variab
 1. Abre Supabase SQL Editor.
 2. Ejecuta el contenido de `supabase/schema.sql`.
 3. En Authentication, activa Email/Password.
-4. Si quieres entrar sin confirmar correo durante pruebas, revisa la opción de confirmación de email en Supabase Auth.
+4. En Authentication -> URL Configuration:
+   - Site URL: tu dominio de Vercel, por ejemplo `https://tu-app.vercel.app`
+   - Redirect URLs: añade `https://tu-app.vercel.app/auth/callback` y `http://localhost:3000/auth/callback`
+5. Si quieres entrar sin confirmar correo durante pruebas, revisa la opción de confirmación de email en Supabase Auth.
 
 El esquema crea:
 
@@ -62,3 +65,11 @@ El proyecto usa Next.js y `vercel.json` solo fuerza el framework:
 ```
 
 Vercel ejecutará `next build` automáticamente. No subas `.env.local`; ya está ignorado por git.
+
+## Comprobar que funciona
+
+- Healthcheck: abre `/api/health`. Debe devolver `ok: true` y las variables de Supabase en `true`.
+- Auth: crea una cuenta, confirma el correo y vuelve a la app por `/auth/callback`.
+- Entrenos: pulsa `Comenzar entreno`, marca alguna serie y termina. Debe aparecer en `workouts`.
+- Medidas: guarda peso/cintura. Debe aparecer en `measurements`.
+- Fotos: sube una imagen. Debe aparecer un objeto en el bucket `progress-photos` y una fila en `progress_photos`.
