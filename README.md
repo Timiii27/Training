@@ -32,9 +32,12 @@ Copia `.env.example` a `.env.local` y rellena:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
 En Vercel añade las mismas variables en `Project Settings -> Environment Variables`.
+
+`SUPABASE_SERVICE_ROLE_KEY` es privada y solo se usa en rutas de servidor. No debe llevar prefijo `NEXT_PUBLIC`.
 
 ## Supabase
 
@@ -60,6 +63,8 @@ La app lee estas tablas si existen en tu Supabase:
 
 Si `routine_templates` o `routine_exercises` no existen todavía, la app usa la rutina de respaldo incluida en el código.
 
+La app puede preparar automáticamente el bucket `progress-photos` desde el backend si `SUPABASE_SERVICE_ROLE_KEY` está configurada.
+
 ## Vercel
 
 El proyecto usa Next.js y `vercel.json` solo fuerza el framework:
@@ -79,4 +84,5 @@ Vercel ejecutará `next build` automáticamente. No subas `.env.local`; ya está
 - Entrenos: pulsa `Comenzar entreno`, marca alguna serie y termina. Debe aparecer en `workouts`.
 - Rutina: si existen `routine_templates` y `routine_exercises`, la app carga la activa; si no, usa la rutina integrada.
 - Medidas: guarda peso/cintura. Debe aparecer en `measurements`.
-- Fotos: sube una imagen. Debe aparecer un objeto en el bucket `progress-photos` y una fila en `progress_photos`.
+- Fotos: pulsa `Preparar almacenamiento` si aparece, sube una imagen y comprueba bucket `progress-photos` + fila en `progress_photos`.
+- Player: en móvil comprueba scroll, timer total, descanso, sonido, Wake Lock y agitar para marcar serie.

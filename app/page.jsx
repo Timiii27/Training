@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "../lib/supabase/client";
 
 const BUCKET = "progress-photos";
 const EXERCISE_IMAGE_BASE = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises";
+const ACTIVE_WORKOUT_KEY = "summer-body-active-workout";
+const SHAKE_THRESHOLD = 28;
+const SHAKE_COOLDOWN_MS = 1400;
 
 function exerciseImage(path) {
   return `${EXERCISE_IMAGE_BASE}/${path}`;
@@ -155,6 +158,20 @@ function secondsLabel(seconds) {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
+function countCompletedSets(completedSets) {
+  return Object.values(completedSets || {}).reduce((sum, count) => sum + count, 0);
+}
+
+function restLeftFor(workout, now = Date.now()) {
+  if (!workout?.restEndsAt) return 0;
+  return Math.max(0, Math.ceil((workout.restEndsAt - now) / 1000));
+}
+
+function workoutElapsedFor(workout, now = Date.now()) {
+  if (!workout?.startedAt) return 0;
+  return Math.max(0, Math.floor((now - workout.startedAt) / 1000));
+}
+
 function getMonthDays(anchor) {
   const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
   const startOffset = (first.getDay() + 6) % 7;
@@ -217,6 +234,10 @@ async function normalizePhoto(file) {
 
 export default function HomePage() {
   const supabase = useMemo(() => createClient(), []);
+  const wakeLockRef = useRef(null);
+  const audioRef = useRef(null);
+  const lastCueRef = useRef(null);
+  const lastShakeRef = useRef(0);
   const [session, setSession] = useState(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -232,6 +253,13 @@ export default function HomePage() {
   const [photoDate, setPhotoDate] = useState(localIso());
   const [photoNote, setPhotoNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const [storedWorkout, setStoredWorkout] = useState(null);
+  const [photoStorage, setPhotoStorage] = useState({ checked: false, ready: false, isSettingUp: false, message: "" });
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [shakeEnabled, setShakeEnabled] = useState(false);
+  const [wakeLockStatus, setWakeLockStatus] = useState("idle");
+  const [motionMessage, setMotionMessage] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -258,22 +286,211 @@ export default function HomePage() {
       setMeasurements([]);
       setPhotos([]);
       setRoutinePlan(fallbackWorkoutPlan);
+      setStoredWorkout(null);
       return;
     }
 
     loadData();
+    restoreStoredWorkout();
   }, [session]);
 
   useEffect(() => {
-    if (!activeWorkout?.restLeft) return undefined;
+    if (!activeWorkout) return undefined;
     const timer = setInterval(() => {
-      setActiveWorkout((current) => {
-        if (!current?.restLeft) return current;
-        return { ...current, restLeft: Math.max(0, current.restLeft - 1) };
-      });
+      setNow(Date.now());
     }, 1000);
     return () => clearInterval(timer);
-  }, [activeWorkout?.restLeft]);
+  }, [activeWorkout]);
+
+  useEffect(() => {
+    if (!activeWorkout) return;
+    localStorage.setItem(ACTIVE_WORKOUT_KEY, JSON.stringify(activeWorkout));
+  }, [activeWorkout]);
+
+  useEffect(() => {
+    if (!activeWorkout) {
+      releaseWakeLock();
+      return undefined;
+    }
+
+    requestWakeLock();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") requestWakeLock();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [activeWorkout]);
+
+  useEffect(() => {
+    if (!activeWorkout) return;
+    const restLeft = restLeftFor(activeWorkout, now);
+    const cue = activeWorkout.restEndsAt && now - activeWorkout.restEndsAt < 1400 && now >= activeWorkout.restEndsAt
+      ? "go"
+      : [1, 2, 3].includes(restLeft)
+        ? String(restLeft)
+        : null;
+
+    if (!cue || cue === lastCueRef.current) return;
+    lastCueRef.current = cue;
+    if (soundEnabled) playBeep(cue === "go" ? 760 : 520, cue === "go" ? 170 : 110);
+    if (cue === "go" && "vibrate" in navigator) navigator.vibrate?.([80, 40, 80]);
+  }, [activeWorkout, now, soundEnabled]);
+
+  useEffect(() => {
+    if (!activeWorkout || !shakeEnabled) return undefined;
+
+    const onMotion = (event) => {
+      if (restLeftFor(activeWorkout) > 0) return;
+      const acceleration = event.accelerationIncludingGravity || event.acceleration;
+      if (!acceleration) return;
+
+      const x = acceleration.x || 0;
+      const y = acceleration.y || 0;
+      const z = acceleration.z || 0;
+      const magnitude = Math.sqrt(x * x + y * y + z * z);
+      const timestamp = Date.now();
+
+      if (magnitude < SHAKE_THRESHOLD || timestamp - lastShakeRef.current < SHAKE_COOLDOWN_MS) return;
+      lastShakeRef.current = timestamp;
+      markSet("shake");
+      if ("vibrate" in navigator) navigator.vibrate?.(80);
+    };
+
+    window.addEventListener("devicemotion", onMotion);
+    return () => window.removeEventListener("devicemotion", onMotion);
+  }, [activeWorkout, shakeEnabled]);
+
+  function restoreStoredWorkout() {
+    try {
+      const raw = localStorage.getItem(ACTIVE_WORKOUT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.startedAt && parsed?.completedSets && Number.isInteger(parsed.exerciseIndex)) {
+        setStoredWorkout(parsed);
+      }
+    } catch {
+      localStorage.removeItem(ACTIVE_WORKOUT_KEY);
+    }
+  }
+
+  async function checkPhotoStorage() {
+    try {
+      const response = await fetch("/api/setup/storage");
+      const result = await response.json();
+      setPhotoStorage({
+        checked: true,
+        ready: Boolean(result.ok && result.exists),
+        isSettingUp: false,
+        message: result.ok && result.exists ? "" : "El almacenamiento de imágenes aún no está preparado.",
+      });
+      return Boolean(result.ok && result.exists);
+    } catch {
+      setPhotoStorage({ checked: true, ready: false, isSettingUp: false, message: "No pude comprobar el almacenamiento." });
+      return false;
+    }
+  }
+
+  async function setupPhotoStorage() {
+    setPhotoStorage((current) => ({ ...current, isSettingUp: true, message: "Preparando almacenamiento..." }));
+    try {
+      const response = await fetch("/api/setup/storage", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || "No pude preparar el almacenamiento.");
+
+      setPhotoStorage({ checked: true, ready: true, isSettingUp: false, message: result.created ? "Almacenamiento preparado." : "Almacenamiento listo." });
+      setMessage(result.created ? "Almacenamiento de imágenes preparado." : "Almacenamiento de imágenes listo.");
+      return true;
+    } catch (error) {
+      setPhotoStorage({ checked: true, ready: false, isSettingUp: false, message: error.message });
+      setMessage(error.message);
+      return false;
+    }
+  }
+
+  async function requestWakeLock() {
+    if (!("wakeLock" in navigator)) {
+      setWakeLockStatus("unsupported");
+      return;
+    }
+
+    try {
+      if (!wakeLockRef.current) {
+        wakeLockRef.current = await navigator.wakeLock.request("screen");
+        wakeLockRef.current.addEventListener("release", () => {
+          wakeLockRef.current = null;
+          setWakeLockStatus("released");
+        });
+      }
+      setWakeLockStatus("active");
+    } catch {
+      setWakeLockStatus("blocked");
+    }
+  }
+
+  async function releaseWakeLock() {
+    try {
+      await wakeLockRef.current?.release();
+    } catch {
+      // The browser may already have released it.
+    } finally {
+      wakeLockRef.current = null;
+      setWakeLockStatus("idle");
+    }
+  }
+
+  function playBeep(frequency = 520, duration = 120) {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      if (!audioRef.current) audioRef.current = new AudioContext();
+      const context = audioRef.current;
+      if (context.state === "suspended") context.resume();
+
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.frequency.value = frequency;
+      oscillator.type = "sine";
+      gain.gain.setValueAtTime(0.0001, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration / 1000);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + duration / 1000 + 0.02);
+    } catch {
+      // Sound is optional.
+    }
+  }
+
+  async function toggleSound() {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    if (next) playBeep(620, 90);
+  }
+
+  async function toggleShake() {
+    const next = !shakeEnabled;
+    if (!next) {
+      setShakeEnabled(false);
+      setMotionMessage("");
+      return;
+    }
+
+    try {
+      if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+        const permission = await DeviceMotionEvent.requestPermission();
+        if (permission !== "granted") {
+          setMotionMessage("Movimiento no permitido en este navegador.");
+          return;
+        }
+      }
+      setShakeEnabled(true);
+      setMotionMessage("Agitar activado.");
+    } catch {
+      setMotionMessage("No pude activar el gesto de agitar.");
+    }
+  }
 
   async function loadData() {
     if (!session?.user) return;
@@ -289,19 +506,18 @@ export default function HomePage() {
 
     const [measureResult, photoResult] = await Promise.all([
       supabase.from("measurements").select("*").order("date", { ascending: true }).order("created_at", { ascending: true }),
-      supabase.from("progress_photos").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }),
+      fetch("/api/photos").then((response) => response.json()).catch((error) => ({ ok: false, error: error.message })),
     ]);
-
-    const signedPhotos = await Promise.all(
-      (photoResult.error ? [] : photoResult.data || []).map(async (photo) => {
-        const { data } = await supabase.storage.from(BUCKET).createSignedUrl(photo.storage_path, 60 * 60);
-        return { ...photo, signedUrl: data?.signedUrl || "" };
-      }),
-    );
 
     setWorkouts(workoutResult.data || []);
     setMeasurements(measureResult.error ? [] : measureResult.data || []);
-    setPhotos(signedPhotos);
+    setPhotos(photoResult.ok ? photoResult.photos || [] : []);
+    setPhotoStorage({
+      checked: true,
+      ready: Boolean(photoResult.storageReady),
+      isSettingUp: false,
+      message: photoResult.storageReady ? "" : "El almacenamiento de imágenes aún no está preparado.",
+    });
     setRoutinePlan(fallbackWorkoutPlan);
 
     try {
@@ -345,26 +561,59 @@ export default function HomePage() {
   }
 
   function startWorkout() {
-    setActiveWorkout({
+    const workout = {
       startedAt: Date.now(),
       exerciseIndex: 0,
       completedSets: {},
-      restLeft: 0,
-    });
+      restEndsAt: null,
+      restDuration: 0,
+    };
+    setStoredWorkout(null);
+    setActiveWorkout(workout);
     setMessage("");
   }
 
-  function markSet() {
+  function continueWorkout() {
+    if (!storedWorkout) return;
+    setActiveWorkout(storedWorkout);
+    setStoredWorkout(null);
+    setMessage("");
+  }
+
+  function clearWorkoutState() {
+    localStorage.removeItem(ACTIVE_WORKOUT_KEY);
+    setStoredWorkout(null);
+    setActiveWorkout(null);
+    releaseWakeLock();
+  }
+
+  function markSet(source = "tap") {
     setActiveWorkout((current) => {
       if (!current) return current;
+      if (restLeftFor(current) > 0) return current;
       const exercise = routinePlan.exercises[current.exerciseIndex];
       const currentCount = current.completedSets[exercise.name] || 0;
       const nextCount = Math.min(exercise.sets, currentCount + 1);
+      if (currentCount >= exercise.sets) return current;
+      const shouldRest = nextCount < exercise.sets;
       return {
         ...current,
         completedSets: { ...current.completedSets, [exercise.name]: nextCount },
-        restLeft: nextCount >= exercise.sets ? 0 : exercise.rest,
+        restDuration: shouldRest ? exercise.rest : 0,
+        restEndsAt: shouldRest ? Date.now() + exercise.rest * 1000 : null,
+        lastAction: source,
       };
+    });
+  }
+
+  function skipRest() {
+    setActiveWorkout((current) => (current ? { ...current, restEndsAt: null, restDuration: 0 } : current));
+  }
+
+  function addRest(seconds = 30) {
+    setActiveWorkout((current) => {
+      if (!current?.restEndsAt) return current;
+      return { ...current, restEndsAt: current.restEndsAt + seconds * 1000, restDuration: (current.restDuration || 0) + seconds };
     });
   }
 
@@ -374,7 +623,8 @@ export default function HomePage() {
       return {
         ...current,
         exerciseIndex: Math.min(routinePlan.exercises.length - 1, Math.max(0, current.exerciseIndex + direction)),
-        restLeft: 0,
+        restEndsAt: null,
+        restDuration: 0,
       };
     });
   }
@@ -383,8 +633,8 @@ export default function HomePage() {
     if (!session?.user || !activeWorkout) return;
 
     setIsSaving(true);
-    const totalSets = Object.values(activeWorkout.completedSets).reduce((sum, count) => sum + count, 0);
-    const duration = Math.max(1, Math.round((Date.now() - activeWorkout.startedAt) / 60000));
+    const totalSets = countCompletedSets(activeWorkout.completedSets);
+    const duration = Math.max(1, Math.round(workoutElapsedFor(activeWorkout) / 60));
     const { error } = await supabase.from("workouts").insert({
       user_id: session.user.id,
       date: localIso(),
@@ -401,7 +651,7 @@ export default function HomePage() {
       return;
     }
 
-    setActiveWorkout(null);
+    clearWorkoutState();
     setMessage(status === "partial" ? "Entreno parcial guardado. También cuenta." : "Entreno guardado. Día sumado.");
     loadData();
   }
@@ -437,20 +687,29 @@ export default function HomePage() {
     setIsSaving(true);
     setMessage("Guardando imágenes...");
 
+    if (!photoStorage.ready) {
+      const ready = await setupPhotoStorage();
+      if (!ready) {
+        setIsSaving(false);
+        event.target.value = "";
+        return;
+      }
+    }
+
     for (const sourceFile of files) {
       try {
         const { file, extension, contentType } = await normalizePhoto(sourceFile);
-        const path = `${session.user.id}/${photoDate || localIso()}-${crypto.randomUUID()}.${extension}`;
-        const upload = await supabase.storage.from(BUCKET).upload(path, file, { contentType, upsert: false });
-        if (upload.error) throw upload.error;
+        const formData = new FormData();
+        formData.append("file", file, `progress.${extension}`);
+        formData.append("date", photoDate || localIso());
+        formData.append("note", photoNote.trim());
 
-        const insert = await supabase.from("progress_photos").insert({
-          user_id: session.user.id,
-          date: photoDate || localIso(),
-          storage_path: path,
-          note: photoNote.trim() || null,
+        const response = await fetch("/api/photos", {
+          method: "POST",
+          body: formData,
         });
-        if (insert.error) throw insert.error;
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || "No pude guardar la imagen.");
       } catch (error) {
         setMessage(`No pude guardar ${sourceFile.name}: ${error.message}`);
         setIsSaving(false);
@@ -473,9 +732,13 @@ export default function HomePage() {
   }
 
   async function deletePhoto(photo) {
-    await supabase.storage.from(BUCKET).remove([photo.storage_path]);
-    const { error } = await supabase.from("progress_photos").delete().eq("id", photo.id);
-    if (error) setMessage(error.message);
+    const response = await fetch("/api/photos", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: photo.id }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) setMessage(result.error || "No pude eliminar la foto.");
     else {
       setMessage("Foto eliminada.");
       loadData();
@@ -494,6 +757,15 @@ export default function HomePage() {
   const calendarDays = getMonthDays(month);
   const workoutDates = new Set(completedWorkouts.map((item) => item.date));
   const today = localIso();
+  const activeExercise = activeWorkout ? routinePlan.exercises[activeWorkout.exerciseIndex] : null;
+  const activeDoneSets = activeWorkout && activeExercise ? activeWorkout.completedSets[activeExercise.name] || 0 : 0;
+  const activeRestLeft = restLeftFor(activeWorkout, now);
+  const activeElapsed = workoutElapsedFor(activeWorkout, now);
+  const countdownCue = activeWorkout?.restEndsAt && now - activeWorkout.restEndsAt < 1400 && now >= activeWorkout.restEndsAt
+    ? "Vamos"
+    : [1, 2, 3].includes(activeRestLeft)
+      ? String(activeRestLeft)
+      : null;
 
   if (loading && !session) {
     return <main className="loading-screen">Preparando tu panel...</main>;
@@ -561,7 +833,7 @@ export default function HomePage() {
             <span>Inicio {formatShortDate(trackingStart)}</span>
           </div>
           <div className="hero-actions">
-            <button className="primary-action" onClick={startWorkout}>Comenzar entreno</button>
+            <button className="primary-action" onClick={storedWorkout ? continueWorkout : startWorkout}>{storedWorkout ? "Continuar entreno" : "Comenzar entreno"}</button>
             <button className="ghost-action" onClick={() => document.getElementById("checkin")?.scrollIntoView({ behavior: "smooth" })}>
               Check-in
             </button>
@@ -608,12 +880,21 @@ export default function HomePage() {
           <span className="panel-kicker">Progreso visual</span>
           <h2>Mismo sitio, misma luz.</h2>
           <p>Añade una referencia frontal o lateral cada pocas semanas para comparar con calma.</p>
+          {photoStorage.checked && !photoStorage.ready && (
+            <div className="storage-warning">
+              <strong>Almacenamiento pendiente</strong>
+              <span>{photoStorage.message || "Prepara el espacio de imágenes antes de guardar fotos."}</span>
+              <button className="ghost-action compact" type="button" onClick={setupPhotoStorage} disabled={photoStorage.isSettingUp}>
+                {photoStorage.isSettingUp ? "Preparando..." : "Preparar almacenamiento"}
+              </button>
+            </div>
+          )}
           <div className="field-grid">
             <label>Fecha<input type="date" value={photoDate} onChange={(event) => setPhotoDate(event.target.value)} /></label>
             <label>Nota<input value={photoNote} onChange={(event) => setPhotoNote(event.target.value)} placeholder="Frontal, mañana..." /></label>
           </div>
           <label className="upload-zone">
-            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={uploadPhotos} />
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={uploadPhotos} disabled={isSaving} />
             <strong>Elegir imágenes</strong>
             <span>Formato móvil o web</span>
           </label>
@@ -727,38 +1008,50 @@ export default function HomePage() {
       {activeWorkout && (
         <div className="workout-modal">
           <div className="workout-player">
-            {(() => {
-              const exercise = routinePlan.exercises[activeWorkout.exerciseIndex];
-              const doneSets = activeWorkout.completedSets[exercise.name] || 0;
-              return (
-                <>
-                  <div className="player-media"><img src={exercise.image} alt={exercise.name} /></div>
-                  <div className="player-content">
-                    <span className="panel-kicker">Ejercicio {activeWorkout.exerciseIndex + 1} / {routinePlan.exercises.length}</span>
-                    <h2>{exercise.name}</h2>
-                    <p>{exercise.cue}</p>
-                    <div className="set-counter">
-                      {Array.from({ length: exercise.sets }, (_, index) => <i key={index} className={index < doneSets ? "on" : ""} />)}
-                    </div>
-                    <strong className="rep-line">{exercise.sets} x {exercise.reps}</strong>
-                    <div className="timer-box">
-                      <span>Descanso</span>
-                      <strong>{secondsLabel(activeWorkout.restLeft)}</strong>
-                    </div>
-                    <div className="player-actions">
-                      <button className="primary-action" onClick={markSet} disabled={doneSets >= exercise.sets}>Marcar serie</button>
-                      <button className="ghost-action" onClick={() => moveExercise(-1)} disabled={activeWorkout.exerciseIndex === 0}>Anterior</button>
-                      <button className="ghost-action" onClick={() => moveExercise(1)} disabled={activeWorkout.exerciseIndex === routinePlan.exercises.length - 1}>Siguiente</button>
-                    </div>
-                    <div className="finish-actions">
-                      <button onClick={() => finishWorkout("partial")} disabled={isSaving}>Guardar parcial</button>
-                      <button onClick={() => finishWorkout("completed")} disabled={isSaving}>Terminar entreno</button>
-                      <button onClick={() => setActiveWorkout(null)}>Cerrar</button>
-                    </div>
+            {countdownCue && <div className="countdown-overlay">{countdownCue}</div>}
+            <header className="player-header">
+              <div>
+                <span className="panel-kicker">Ejercicio {activeWorkout.exerciseIndex + 1} / {routinePlan.exercises.length}</span>
+                <strong>{secondsLabel(activeElapsed)}</strong>
+              </div>
+              <div className="player-status">
+                <span>{wakeLockStatus === "active" ? "Pantalla activa" : wakeLockStatus === "unsupported" ? "Sin Wake Lock" : "Pantalla normal"}</span>
+                <button type="button" onClick={toggleSound}>{soundEnabled ? "Sonido ON" : "Sonido OFF"}</button>
+              </div>
+            </header>
+
+            {activeExercise && (
+              <>
+                <div className="player-media"><img src={activeExercise.image} alt={activeExercise.name} /></div>
+                <div className="player-content">
+                  <h2>{activeExercise.name}</h2>
+                  <p>{activeExercise.cue}</p>
+                  <div className="set-counter">
+                    {Array.from({ length: activeExercise.sets }, (_, index) => <i key={index} className={index < activeDoneSets ? "on" : ""} />)}
                   </div>
-                </>
-              );
-            })()}
+                  <strong className="rep-line">{activeExercise.sets} x {activeExercise.reps}</strong>
+                  <div className={`timer-box ${activeRestLeft > 0 ? "is-resting" : ""}`}>
+                    <span>{activeRestLeft > 0 ? "Descanso" : "Listo para serie"}</span>
+                    <strong>{secondsLabel(activeRestLeft)}</strong>
+                  </div>
+                  <div className="player-toggles">
+                    <button type="button" onClick={toggleShake} className={shakeEnabled ? "is-on" : ""}>{shakeEnabled ? "Agitar ON" : "Agitar para serie"}</button>
+                    {motionMessage && <span>{motionMessage}</span>}
+                  </div>
+                </div>
+              </>
+            )}
+
+            <footer className="player-footer">
+              <button className="primary-action" onClick={() => markSet("tap")} disabled={!activeExercise || activeDoneSets >= activeExercise.sets || activeRestLeft > 0}>Serie hecha</button>
+              <button className="ghost-action" onClick={skipRest} disabled={activeRestLeft <= 0}>Saltar</button>
+              <button className="ghost-action" onClick={() => addRest(30)} disabled={activeRestLeft <= 0}>+30s</button>
+              <button className="ghost-action" onClick={() => moveExercise(-1)} disabled={activeWorkout.exerciseIndex === 0}>Anterior</button>
+              <button className="ghost-action" onClick={() => moveExercise(1)} disabled={activeWorkout.exerciseIndex === routinePlan.exercises.length - 1}>Siguiente</button>
+              <button className="ghost-action" onClick={() => finishWorkout("partial")} disabled={isSaving}>Guardar parcial</button>
+              <button className="ghost-action" onClick={() => finishWorkout("completed")} disabled={isSaving}>Terminar</button>
+              <button className="ghost-action" onClick={clearWorkoutState}>Cerrar</button>
+            </footer>
           </div>
         </div>
       )}
