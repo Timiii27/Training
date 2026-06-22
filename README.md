@@ -1,50 +1,64 @@
 # Summer Body · Training Log
 
-Visor web local para seguir un bloque físico simple de 30-40 minutos, casi sin material, registrar entrenamientos, consultar gráficos y guardar fotos opcionales de progreso.
-
-## Entrenamiento guiado
-
-- El dashboard muestra la sesión base diaria pendiente.
-- La vista `Calendario` muestra el mes completo: entrenamientos hechos, recuperados, fallados, pendientes y descansos.
-- Las sesiones de fuerza falladas se pueden recuperar desde su propia casilla mensual.
-- Pulsa `Comenzar sesión` para abrir el modo guiado.
-- Cada ejercicio incluye referencia fotográfica local, series, repeticiones, descanso y una clave técnica.
-- Al marcar una serie empieza el temporizador de descanso. Puedes añadir `30 s` o saltarlo.
-- Al terminar, la app guarda automáticamente el entrenamiento completo o parcial en el diario.
-- Si recargas la página durante una sesión, el progreso del entrenamiento se conserva en el navegador.
+App Next.js para seguir una rutina simple de pecho y abdomen, guardar entrenos, registrar peso/cintura y subir fotos privadas con Supabase.
 
 ## Enfoque actual
 
-- `A`: sesión diaria de pecho y abdomen sin material.
-- `Express`: 15-20 minutos para días con poco tiempo.
-- Bote, bici y cardio se mantienen como complemento opcional.
+- Una sesión principal repetible de `30-40 min`: flexiones, variantes de empuje y core.
+- Un modo express de `15 min` para días con poco tiempo.
+- Check-in corporal independiente del entrenamiento: puedes medir peso/cintura antes de entrenar y completar la sesión después.
+- Calendario mensual para ver días hechos, pendientes y fallados.
+- Fotos en Supabase Storage privado. Los HEIC se convierten a JPG en el navegador antes de subir.
 
-## Abrir la app
-
-### Local con servidor de archivos y JSON
+## Desarrollo local
 
 ```bash
-npm start
+npm install
+npm run dev
 ```
 
-Después abre [http://127.0.0.1:4173](http://127.0.0.1:4173).
+Abre [http://localhost:3000](http://localhost:3000).
 
-`127.0.0.1` es solo para desarrollo local. En Vercel no se usa ese servidor.
+La versión antigua con JSON local sigue disponible solo como respaldo:
 
-### Primera subida a Vercel
+```bash
+npm run local:json
+```
 
-El proyecto incluye `vercel.json` para publicar `public/` como app estática:
+## Variables de entorno
 
-- Build command: `npm run check`
-- Output directory: `public`
+Copia `.env.example` a `.env.local` y rellena:
 
-Mientras no conectemos Supabase, la versión en Vercel funciona en modo temporal: guarda entrenos y fotos en `localStorage` del navegador. Es útil para probar la interfaz online, pero no sincroniza entre dispositivos ni usuarios.
+```bash
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
+```
 
-## Dónde se guardan los datos
+En Vercel añade las mismas variables en `Project Settings -> Environment Variables`.
 
-- `data/entries.json`: fuente estructurada para gráficos y estadísticas.
-- `data/journal.md`: diario legible regenerado automáticamente.
-- `data/photos.json`: metadatos de fotos.
-- `data/photos/`: fotos opcionales, solo en local.
+## Supabase
 
-Las fotos no se suben a ningún servicio externo. Para comparar cambios físicos, suele bastar con añadir una foto frontal o lateral cada 2-4 semanas en condiciones parecidas.
+1. Abre Supabase SQL Editor.
+2. Ejecuta el contenido de `supabase/schema.sql`.
+3. En Authentication, activa Email/Password.
+4. Si quieres entrar sin confirmar correo durante pruebas, revisa la opción de confirmación de email en Supabase Auth.
+
+El esquema crea:
+
+- `workouts`: entrenos por usuario.
+- `measurements`: peso, cintura y notas por fecha.
+- `progress_photos`: metadatos de fotos.
+- Bucket privado `progress-photos`.
+- Políticas RLS para que cada usuario solo lea y escriba sus propios datos.
+
+## Vercel
+
+El proyecto usa Next.js y `vercel.json` solo fuerza el framework:
+
+```json
+{
+  "framework": "nextjs"
+}
+```
+
+Vercel ejecutará `next build` automáticamente. No subas `.env.local`; ya está ignorado por git.

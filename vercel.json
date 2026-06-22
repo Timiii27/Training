@@ -1,5 +1,3 @@
 {
-  "buildCommand": "npm run check",
-  "outputDirectory": "public",
-  "cleanUrls": true
+  "framework": "nextjs"
 }

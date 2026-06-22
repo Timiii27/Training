@@ -6,6 +6,7 @@ outputs/
 .env
 .env.*
 node_modules/
+.next/
 data/*.local.json
 data/photos/*
 !data/photos/.gitkeep
