@@ -38,21 +38,27 @@ En Vercel añade las mismas variables en `Project Settings -> Environment Variab
 
 ## Supabase
 
-1. Abre Supabase SQL Editor.
-2. Ejecuta el contenido de `supabase/schema.sql`.
-3. En Authentication, activa Email/Password.
-4. En Authentication -> URL Configuration:
+1. En Authentication, activa Email/Password.
+2. En Authentication -> URL Configuration:
    - Site URL: tu dominio de Vercel, por ejemplo `https://tu-app.vercel.app`
    - Redirect URLs: añade `https://tu-app.vercel.app/auth/callback` y `http://localhost:3000/auth/callback`
-5. Si quieres entrar sin confirmar correo durante pruebas, revisa la opción de confirmación de email en Supabase Auth.
+3. Para uso privado, desactiva el registro público en Authentication -> Providers -> Email:
+   - Desactiva `Allow new users to sign up` o `Enable sign ups`, según cómo lo muestre tu panel.
+4. Crea usuarios manualmente desde Authentication -> Users -> Add user:
+   - Email
+   - Password temporal o definitivo
+   - Activa `Auto Confirm User` para no depender del correo de confirmación.
 
-El esquema crea:
+La app lee estas tablas si existen en tu Supabase:
 
 - `workouts`: entrenos por usuario.
 - `measurements`: peso, cintura y notas por fecha.
 - `progress_photos`: metadatos de fotos.
+- `routine_templates`: rutinas activas por usuario.
+- `routine_exercises`: ejercicios, orden, series, reps, descanso e imágenes.
 - Bucket privado `progress-photos`.
-- Políticas RLS para que cada usuario solo lea y escriba sus propios datos.
+
+Si `routine_templates` o `routine_exercises` no existen todavía, la app usa la rutina de respaldo incluida en el código.
 
 ## Vercel
 
@@ -69,7 +75,8 @@ Vercel ejecutará `next build` automáticamente. No subas `.env.local`; ya está
 ## Comprobar que funciona
 
 - Healthcheck: abre `/api/health`. Debe devolver `ok: true` y las variables de Supabase en `true`.
-- Auth: crea una cuenta, confirma el correo y vuelve a la app por `/auth/callback`.
+- Auth: crea un usuario manual, entra con email y contraseña.
 - Entrenos: pulsa `Comenzar entreno`, marca alguna serie y termina. Debe aparecer en `workouts`.
+- Rutina: si existen `routine_templates` y `routine_exercises`, la app carga la activa; si no, usa la rutina integrada.
 - Medidas: guarda peso/cintura. Debe aparecer en `measurements`.
 - Fotos: sube una imagen. Debe aparecer un objeto en el bucket `progress-photos` y una fila en `progress_photos`.

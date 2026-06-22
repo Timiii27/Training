@@ -4,58 +4,87 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "../lib/supabase/client";
 
 const BUCKET = "progress-photos";
+const EXERCISE_IMAGE_BASE = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises";
 
-const workoutPlan = {
-  title: "Pecho + abdomen simple",
+function exerciseImage(path) {
+  return `${EXERCISE_IMAGE_BASE}/${path}`;
+}
+
+const fallbackWorkoutPlan = {
+  title: "Torso V + core",
   duration: "30-40 min",
-  promise: "La misma base casi cada día: empuje, core y constancia. Sin complicarte con mil sesiones.",
+  promise: "Sesión diaria para ganar presencia en pecho, hombro y espalda alta mientras la cintura se ve más recogida.",
   exercises: [
     {
       name: "Flexiones normales o inclinadas",
       sets: 4,
       reps: "8-15",
       rest: 60,
-      image: "/assets/exercises/pushup.jpg",
+      image: exerciseImage("Pushups/0.jpg"),
+      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Pushups",
       cue: "Cuerpo firme, pecho al suelo o al apoyo, empuja como si quisieras separar el suelo.",
     },
     {
-      name: "Flexiones lentas",
+      name: "Press en suelo con mochila",
       sets: 3,
-      reps: "6-12",
+      reps: "10-15",
       rest: 60,
-      image: "/assets/exercises/pushup.jpg",
-      cue: "Baja en tres segundos. Si pierdes forma, eleva las manos en una mesa o cama.",
+      image: exerciseImage("Dumbbell_Floor_Press/0.jpg"),
+      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Dumbbell_Floor_Press",
+      cue: "Mochila pegada al pecho o mancuernas si tienes. Si no hay peso, cambia por flexiones con pausa.",
+    },
+    {
+      name: "Remo invertido o remo con sábana",
+      sets: 4,
+      reps: "8-12",
+      rest: 75,
+      image: exerciseImage("Inverted_Row/0.jpg"),
+      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Inverted_Row",
+      cue: "Prioridad visual para tu estructura: espalda alta y dorsales. Si no puedes, haz remo con banda o mochila.",
+    },
+    {
+      name: "Band pull-apart o Y-T-W",
+      sets: 3,
+      reps: "15-25",
+      rest: 45,
+      image: exerciseImage("Band_Pull_Apart/0.jpg"),
+      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Band_Pull_Apart",
+      cue: "Hombro posterior y postura. Esto hace que el pecho se vea mejor y protege tus hombros.",
     },
     {
       name: "Flexiones cerradas",
-      sets: 3,
+      sets: 2,
       reps: "6-12",
       rest: 75,
-      image: "/assets/exercises/pushup.jpg",
-      cue: "Codos cerca del cuerpo. Tríceps y pecho alto, sin dolor de hombro.",
+      image: exerciseImage("Pushups_Close_and_Wide_Hand_Positions/0.jpg"),
+      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Pushups_Close_and_Wide_Hand_Positions",
+      cue: "Tríceps y pecho. Si el hombro protesta, abre un poco manos o hazlas inclinadas.",
     },
     {
-      name: "Dead bug",
+      name: "Dead bug controlado",
       sets: 3,
       reps: "8-12 / lado",
       rest: 45,
-      image: "/assets/exercises/dead-bug.jpg",
+      image: exerciseImage("Dead_Bug/0.jpg"),
+      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Dead_Bug",
       cue: "Zona lumbar pegada al suelo. Si se arquea, reduce recorrido.",
     },
     {
-      name: "Plancha frontal",
+      name: "Plancha con toque de hombro",
       sets: 3,
-      reps: "30-50 s",
+      reps: "10-20 toques",
       rest: 45,
-      image: "/assets/exercises/plank.jpg",
-      cue: "Costillas abajo, glúteo activo y respiración tranquila.",
+      image: exerciseImage("Plank/0.jpg"),
+      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Plank",
+      cue: "Cadera quieta. Lento y estable vale más que rápido y torcido.",
     },
     {
       name: "Plancha lateral",
       sets: 2,
       reps: "25-45 s / lado",
       rest: 45,
-      image: "/assets/exercises/plank.jpg",
+      image: exerciseImage("Side_Bridge/0.jpg"),
+      referenceUrl: "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Side_Bridge",
       cue: "Cadera alta. Mejor corta y limpia que larga y doblada.",
     },
   ],
@@ -67,6 +96,46 @@ const quickPlan = [
   "2 rondas de plancha 40 s",
   "Una foto mental: hoy has sumado",
 ];
+
+function displayNameFromSession(session) {
+  const metadataName = session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name;
+  const raw = metadataName || session?.user?.email?.split("@")[0] || "Atleta";
+  const cleaned = raw.replace(/[._-]+/g, " ").replace(/\d+/g, "").trim() || "Atleta";
+  return cleaned
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function firstTrackingDate(workouts, measurements, photos) {
+  const dates = [...workouts, ...measurements, ...photos].map((item) => item.date).filter(Boolean).sort();
+  return dates[0] || localIso();
+}
+
+function normalizeRoutine(row) {
+  if (!row) return fallbackWorkoutPlan;
+
+  const exercises = [...(row.routine_exercises || [])]
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((exercise) => ({
+      name: exercise.name,
+      sets: exercise.sets,
+      reps: exercise.reps,
+      rest: exercise.rest_seconds,
+      image: exercise.image_url || "/assets/exercises/pushup.jpg",
+      referenceUrl: exercise.reference_url,
+      cue: exercise.cue,
+    }));
+
+  if (!exercises.length) return fallbackWorkoutPlan;
+
+  return {
+    title: row.title,
+    duration: row.duration_label,
+    promise: row.promise,
+    exercises,
+  };
+}
 
 function localIso(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -151,12 +220,12 @@ export default function HomePage() {
   const [session, setSession] = useState(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
-  const [authMode, setAuthMode] = useState("sign-in");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [workouts, setWorkouts] = useState([]);
   const [measurements, setMeasurements] = useState([]);
   const [photos, setPhotos] = useState([]);
+  const [routinePlan, setRoutinePlan] = useState(fallbackWorkoutPlan);
   const [month, setMonth] = useState(new Date());
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [measureForm, setMeasureForm] = useState({ date: localIso(), weight: "", waist: "", note: "" });
@@ -188,6 +257,7 @@ export default function HomePage() {
       setWorkouts([]);
       setMeasurements([]);
       setPhotos([]);
+      setRoutinePlan(fallbackWorkoutPlan);
       return;
     }
 
@@ -209,28 +279,47 @@ export default function HomePage() {
     if (!session?.user) return;
 
     setLoading(true);
-    const [workoutResult, measureResult, photoResult] = await Promise.all([
-      supabase.from("workouts").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }),
-      supabase.from("measurements").select("*").order("date", { ascending: true }).order("created_at", { ascending: true }),
-      supabase.from("progress_photos").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }),
-    ]);
+    const workoutResult = await supabase.from("workouts").select("*").order("date", { ascending: false }).order("created_at", { ascending: false });
 
-    if (workoutResult.error || measureResult.error || photoResult.error) {
-      setMessage("No pude cargar tus datos. Revisa la conexión del proyecto.");
+    if (workoutResult.error) {
+      setMessage("No pude cargar tus entrenos. Revisa la conexión del proyecto.");
       setLoading(false);
       return;
     }
 
+    const [measureResult, photoResult] = await Promise.all([
+      supabase.from("measurements").select("*").order("date", { ascending: true }).order("created_at", { ascending: true }),
+      supabase.from("progress_photos").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }),
+    ]);
+
     const signedPhotos = await Promise.all(
-      (photoResult.data || []).map(async (photo) => {
+      (photoResult.error ? [] : photoResult.data || []).map(async (photo) => {
         const { data } = await supabase.storage.from(BUCKET).createSignedUrl(photo.storage_path, 60 * 60);
         return { ...photo, signedUrl: data?.signedUrl || "" };
       }),
     );
 
     setWorkouts(workoutResult.data || []);
-    setMeasurements(measureResult.data || []);
+    setMeasurements(measureResult.error ? [] : measureResult.data || []);
     setPhotos(signedPhotos);
+    setRoutinePlan(fallbackWorkoutPlan);
+
+    try {
+      const routineResult = await supabase
+        .from("routine_templates")
+        .select("*, routine_exercises(*)")
+        .eq("active", true)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!routineResult.error && routineResult.data) {
+        setRoutinePlan(normalizeRoutine(routineResult.data));
+      }
+    } catch {
+      setRoutinePlan(fallbackWorkoutPlan);
+    }
+
     setLoading(false);
   }
 
@@ -239,16 +328,7 @@ export default function HomePage() {
     setMessage("");
     setIsSaving(true);
 
-    const payload = { email: authEmail.trim(), password: authPassword };
-    const result =
-      authMode === "sign-up"
-        ? await supabase.auth.signUp({
-            ...payload,
-            options: {
-              emailRedirectTo: `${window.location.origin}/auth/callback`,
-            },
-          })
-        : await supabase.auth.signInWithPassword(payload);
+    const result = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
 
     setIsSaving(false);
     if (result.error) {
@@ -256,7 +336,7 @@ export default function HomePage() {
       return;
     }
 
-    setMessage(authMode === "sign-up" ? "Cuenta creada. Revisa tu correo para activarla." : "Dentro. A sumar.");
+    setMessage("Dentro. A sumar.");
   }
 
   async function signOut() {
@@ -277,7 +357,7 @@ export default function HomePage() {
   function markSet() {
     setActiveWorkout((current) => {
       if (!current) return current;
-      const exercise = workoutPlan.exercises[current.exerciseIndex];
+      const exercise = routinePlan.exercises[current.exerciseIndex];
       const currentCount = current.completedSets[exercise.name] || 0;
       const nextCount = Math.min(exercise.sets, currentCount + 1);
       return {
@@ -293,7 +373,7 @@ export default function HomePage() {
       if (!current) return current;
       return {
         ...current,
-        exerciseIndex: Math.min(workoutPlan.exercises.length - 1, Math.max(0, current.exerciseIndex + direction)),
+        exerciseIndex: Math.min(routinePlan.exercises.length - 1, Math.max(0, current.exerciseIndex + direction)),
         restLeft: 0,
       };
     });
@@ -310,7 +390,7 @@ export default function HomePage() {
       date: localIso(),
       type: "strength",
       status,
-      activity: workoutPlan.title,
+      activity: routinePlan.title,
       duration,
       notes: `${totalSets} series registradas. ${status === "partial" ? "Entreno parcial." : "Entreno completo."}`,
     });
@@ -405,6 +485,8 @@ export default function HomePage() {
   const completedWorkouts = workouts.filter((item) => item.status === "completed");
   const latestMeasurement = measurements.at(-1);
   const todayWorkout = workouts.find((item) => item.date === localIso() && item.type === "strength");
+  const displayName = displayNameFromSession(session);
+  const trackingStart = firstTrackingDate(workouts, measurements, photos);
   const weekWorkouts = workouts.filter((item) => {
     const diff = (new Date(`${localIso()}T12:00:00`) - new Date(`${item.date}T12:00:00`)) / 86400000;
     return diff >= 0 && diff < 7 && item.status === "completed";
@@ -434,7 +516,7 @@ export default function HomePage() {
         </section>
 
         <form className="auth-panel" onSubmit={submitAuth}>
-          <span className="panel-kicker">{authMode === "sign-in" ? "Entrar" : "Crear cuenta"}</span>
+          <span className="panel-kicker">Acceso</span>
           <label>
             Email
             <input type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required />
@@ -444,11 +526,9 @@ export default function HomePage() {
             <input type="password" minLength={6} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required />
           </label>
           <button className="primary-action" disabled={isSaving}>
-            {isSaving ? "Un segundo..." : authMode === "sign-in" ? "Entrar" : "Crear cuenta"}
+            {isSaving ? "Un segundo..." : "Entrar"}
           </button>
-          <button className="ghost-action" type="button" onClick={() => setAuthMode(authMode === "sign-in" ? "sign-up" : "sign-in")}>
-            {authMode === "sign-in" ? "No tengo cuenta todavía" : "Ya tengo cuenta"}
-          </button>
+          <p className="access-note">Acceso privado. Las cuentas se activan manualmente.</p>
           {message && <p className="form-message">{message}</p>}
         </form>
       </main>
@@ -460,9 +540,12 @@ export default function HomePage() {
       <header className="topbar">
         <div>
           <p className="eyebrow">Summer Body</p>
-          <h1>Pecho, core y días que suman.</h1>
+          <h1>Panel de {displayName}.</h1>
         </div>
-        <button className="ghost-action compact" onClick={signOut}>Salir</button>
+        <div className="topbar-actions">
+          <span className="user-pill">{displayName.slice(0, 1)}</span>
+          <button className="ghost-action compact" onClick={signOut}>Salir</button>
+        </div>
       </header>
 
       {message && <div className="toast">{message}</div>}
@@ -470,8 +553,13 @@ export default function HomePage() {
       <section className="hero-grid">
         <div className="today-block">
           <span className="panel-kicker">Hoy</span>
-          <h2>{todayWorkout ? "Ya has fichado fuerza." : workoutPlan.title}</h2>
-          <p>{todayWorkout ? "Si quieres hacer algo extra, que sea suave: paseo, movilidad o bote tranquilo." : workoutPlan.promise}</p>
+          <h2>{todayWorkout ? `${displayName}, fuerza fichada.` : `${displayName}, toca ${routinePlan.title}.`}</h2>
+          <p>{todayWorkout ? "El trabajo principal está hecho. Si quieres algo extra, que sea suave y fácil de recuperar." : routinePlan.promise}</p>
+          <div className="focus-row">
+            <span>{routinePlan.duration}</span>
+            <span>{routinePlan.exercises.length} ejercicios</span>
+            <span>Inicio {formatShortDate(trackingStart)}</span>
+          </div>
           <div className="hero-actions">
             <button className="primary-action" onClick={startWorkout}>Comenzar entreno</button>
             <button className="ghost-action" onClick={() => document.getElementById("checkin")?.scrollIntoView({ behavior: "smooth" })}>
@@ -489,13 +577,14 @@ export default function HomePage() {
       </section>
 
       <section className="workout-strip">
-        {workoutPlan.exercises.map((exercise, index) => (
+        {routinePlan.exercises.map((exercise, index) => (
           <article key={exercise.name} className="exercise-tile">
             <img src={exercise.image} alt={exercise.name} />
             <div>
               <span>{index + 1}</span>
               <h3>{exercise.name}</h3>
               <p>{exercise.sets} x {exercise.reps} · descanso {exercise.rest}s</p>
+              {exercise.referenceUrl && <a className="reference-link" href={exercise.referenceUrl} target="_blank" rel="noreferrer">Ver técnica</a>}
             </div>
           </article>
         ))}
@@ -584,11 +673,12 @@ export default function HomePage() {
             const iso = localIso(date);
             const inMonth = date.getMonth() === month.getMonth();
             const done = workoutDates.has(iso);
-            const missed = inMonth && iso < today && !done;
+            const beforeStart = iso < trackingStart;
+            const missed = inMonth && iso < today && iso >= trackingStart && !done;
             return (
               <button
                 key={iso}
-                className={`month-day ${inMonth ? "" : "muted"} ${done ? "done" : ""} ${missed ? "missed" : ""} ${iso === today ? "today" : ""}`}
+                className={`month-day ${inMonth ? "" : "muted"} ${beforeStart ? "before-start" : ""} ${done ? "done" : ""} ${missed ? "missed" : ""} ${iso === today ? "today" : ""}`}
                 onClick={() => {
                   setMeasureForm((current) => ({ ...current, date: iso }));
                   setPhotoDate(iso);
@@ -596,7 +686,7 @@ export default function HomePage() {
                 }}
               >
                 <strong>{date.getDate()}</strong>
-                <span>{done ? "Hecho" : missed ? "Fallado" : "Pendiente"}</span>
+                <span>{done ? "Hecho" : beforeStart ? "Sin plan" : missed ? "Fallado" : "Pendiente"}</span>
               </button>
             );
           })}
@@ -638,13 +728,13 @@ export default function HomePage() {
         <div className="workout-modal">
           <div className="workout-player">
             {(() => {
-              const exercise = workoutPlan.exercises[activeWorkout.exerciseIndex];
+              const exercise = routinePlan.exercises[activeWorkout.exerciseIndex];
               const doneSets = activeWorkout.completedSets[exercise.name] || 0;
               return (
                 <>
                   <div className="player-media"><img src={exercise.image} alt={exercise.name} /></div>
                   <div className="player-content">
-                    <span className="panel-kicker">Ejercicio {activeWorkout.exerciseIndex + 1} / {workoutPlan.exercises.length}</span>
+                    <span className="panel-kicker">Ejercicio {activeWorkout.exerciseIndex + 1} / {routinePlan.exercises.length}</span>
                     <h2>{exercise.name}</h2>
                     <p>{exercise.cue}</p>
                     <div className="set-counter">
@@ -658,7 +748,7 @@ export default function HomePage() {
                     <div className="player-actions">
                       <button className="primary-action" onClick={markSet} disabled={doneSets >= exercise.sets}>Marcar serie</button>
                       <button className="ghost-action" onClick={() => moveExercise(-1)} disabled={activeWorkout.exerciseIndex === 0}>Anterior</button>
-                      <button className="ghost-action" onClick={() => moveExercise(1)} disabled={activeWorkout.exerciseIndex === workoutPlan.exercises.length - 1}>Siguiente</button>
+                      <button className="ghost-action" onClick={() => moveExercise(1)} disabled={activeWorkout.exerciseIndex === routinePlan.exercises.length - 1}>Siguiente</button>
                     </div>
                     <div className="finish-actions">
                       <button onClick={() => finishWorkout("partial")} disabled={isSaving}>Guardar parcial</button>
