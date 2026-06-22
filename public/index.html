@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101816" />
+    <title>Summer Body · Training Log</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <button class="brand" data-view-link="dashboard" aria-label="Ir al inicio">
+        <span class="brand-mark">SH</span>
+        <span><strong>SUMMER BODY</strong><small>30 MIN · 2026</small></span>
+      </button>
+      <nav class="desktop-nav" aria-label="Navegación principal">
+        <button data-view-link="dashboard" class="is-active">Hoy</button>
+        <button data-view-link="log">Registrar</button>
+        <button data-view-link="progress">Progreso</button>
+        <button data-view-link="calendar">Calendario</button>
+        <button data-view-link="plan">Plan</button>
+      </nav>
+      <a class="journal-link" href="/api/journal.md" target="_blank" rel="noreferrer">Ver diario .md</a>
+    </header>
+
+    <main>
+      <section class="view is-visible" data-view="dashboard">
+        <div class="hero">
+          <div class="hero-noise"></div>
+          <div class="hero-inner">
+            <p class="eyebrow" id="today-label">FÍSICO · JUNIO</p>
+            <h1>30 minutos.<br /><em>Cuerpo trabajado.</em></h1>
+            <p class="hero-copy" id="motivation-copy">Empieza con una sesión simple y suma el primer día.</p>
+            <div class="hero-actions">
+              <button class="primary-action" data-start-next>Comenzar sesión <span>▶</span></button>
+              <button class="hero-secondary" data-view-link="log">Registrar manualmente</button>
+            </div>
+          </div>
+          <div class="hero-score">
+            <span class="score-label">SESIÓN SIGUIENTE</span>
+            <strong id="next-session">A</strong>
+            <span id="next-session-name">Pecho y core sin material · 35 min</span>
+          </div>
+        </div>
+
+        <section class="dashboard-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">NUEVO BLOQUE</p><h2>Simple. Medible. Repetible.</h2></div>
+            <p>Una sesión base para repetir: pecho y abdomen sin material. Bote y cardio siguen como extra.</p>
+          </div>
+          <div class="metric-strip">
+            <article><small>SESIONES</small><strong id="metric-sessions">0</strong><span>completadas</span></article>
+            <article><small>MINUTOS</small><strong id="metric-minutes">0</strong><span>de trabajo</span></article>
+            <article><small>RACHA</small><strong id="metric-streak">0</strong><span>días seguidos</span></article>
+            <article><small>SEMANA</small><strong id="metric-week">0</strong><span>sesiones de fuerza</span></article>
+          </div>
+        </section>
+
+        <section class="dashboard-grid">
+          <div>
+            <div class="section-heading compact">
+              <div><p class="eyebrow">ÚLTIMOS DÍAS</p><h2>Actividad reciente</h2></div>
+              <button class="text-action" data-view-link="progress">Ver todo →</button>
+            </div>
+            <div class="timeline" id="recent-list"></div>
+          </div>
+          <aside class="weekly-panel">
+            <p class="eyebrow">OBJETIVO SEMANAL</p>
+            <h3 id="weekly-message">Empieza por la sesión A.</h3>
+            <div class="week-progress" id="week-progress"></div>
+            <p class="panel-note">Objetivo: repetir la sesión base 4 veces por semana. Suelo, flexiones y abdomen.</p>
+          </aside>
+        </section>
+
+        <section class="calendar-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">SEMANA RECOMENDADA</p><h2>Elige corto y cumple.</h2></div>
+            <p>La guía prioriza pecho y abdomen sin material. Si pierdes un día, repite la sesión base sin complicarte.</p>
+          </div>
+          <div class="weekly-calendar" id="weekly-calendar"></div>
+        </section>
+      </section>
+
+      <section class="view" data-view="log">
+        <div class="page-intro">
+          <p class="eyebrow">REGISTRO RÁPIDO</p>
+          <h1>¿Qué has sumado hoy?</h1>
+          <p>En menos de un minuto queda guardado en tu historial y en el diario Markdown.</p>
+        </div>
+        <form class="entry-form" id="entry-form">
+          <div class="form-grid">
+            <label><span>Fecha</span><input required type="date" name="date" id="entry-date" /></label>
+            <label><span>Tipo</span>
+              <select name="type" id="entry-type">
+                <option value="strength">Fuerza</option>
+                <option value="cardio">Cardio</option>
+                <option value="court">Pista</option>
+                <option value="rest">Descanso</option>
+              </select>
+            </label>
+            <label><span>Estado</span>
+              <select name="status">
+                <option value="completed">Completada</option>
+                <option value="partial">Parcial</option>
+                <option value="planned">Planificada</option>
+                <option value="rest">Descanso</option>
+              </select>
+            </label>
+            <label><span>Sesión o actividad</span>
+              <select name="activity" id="entry-activity">
+                <option value="A">A · Pecho y core sin material</option>
+                <option value="Viaje">Express sin material</option>
+                <option value="Bici cómoda">Bici cómoda</option>
+                <option value="Tiro y bote">Tiro y bote</option>
+                <option value="Pista progresiva">Pista progresiva</option>
+                <option value="Descanso">Descanso</option>
+              </select>
+            </label>
+            <label><span>Minutos</span><input type="number" min="0" max="1440" step="1" name="duration" placeholder="50" /></label>
+          </div>
+          <label class="full-field"><span>Notas · opcional</span><textarea name="notes" rows="4" maxlength="500" placeholder="Sensaciones, molestias o algo que quieras recordar."></textarea></label>
+          <div class="form-footer">
+            <p>Si aparece dolor articular, para. Las molestias no cuentan como progreso.</p>
+            <button class="primary-action" type="submit">Guardar registro <span>+</span></button>
+          </div>
+        </form>
+      </section>
+
+      <section class="view" data-view="progress">
+        <div class="page-intro">
+          <p class="eyebrow">PROGRESO</p>
+          <h1>Lo que repites, cambia.</h1>
+          <p>Peso y cintura una vez por semana. El gráfico no necesita datos perfectos, solo comparables.</p>
+        </div>
+        <section class="chart-block">
+          <div class="chart-heading">
+            <div><h2>Peso y cintura</h2><p>Seguimiento semanal</p></div>
+            <div class="chart-legend"><span><i class="weight-dot"></i>Peso</span><span><i class="waist-dot"></i>Cintura</span></div>
+          </div>
+          <div id="progress-chart" class="chart-wrap"></div>
+        </section>
+        <section class="body-checkin">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">REVISIÓN CORPORAL</p>
+              <h2>Peso, cintura y fotos.</h2>
+              <p>Hazlo antes de entrenar y repite las mismas condiciones cada semana. Guardar esta revisión no marca el entrenamiento como completado.</p>
+            </div>
+          </div>
+          <form class="checkin-form" id="checkin-form">
+            <label><span>Fecha</span><input required type="date" name="date" id="checkin-date" /></label>
+            <label><span>Peso · kg</span><input type="number" min="40" max="250" step="0.1" name="weight" placeholder="100,0" /></label>
+            <label><span>Cintura · cm</span><input type="number" min="40" max="200" step="0.1" name="waist" placeholder="cm" /></label>
+            <label><span>Fotos · opcionales</span><input type="file" name="photos" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple /></label>
+            <label class="checkin-note"><span>Nota · opcional</span><input type="text" name="note" maxlength="180" placeholder="Ej. inicio · frontal, lateral y espalda" /></label>
+            <button class="primary-action" type="submit">Guardar revisión <span>+</span></button>
+          </form>
+          <p class="form-hint">Puedes guardar solo medidas, solo fotos o ambas cosas juntas. HEIC se convierte localmente a JPG para mostrarlo en la galería.</p>
+          <div class="checkin-next">
+            <div>
+              <p class="eyebrow">DESPUÉS DE LA REVISIÓN</p>
+              <h3>Ahora sí: toca entrenar.</h3>
+              <p>El día solo contará como entrenado cuando termines la sesión guiada o guardes un registro manual de actividad.</p>
+            </div>
+            <div class="checkin-next-actions">
+              <button class="primary-action" data-start-next>Empezar sesión <b id="checkin-next-session">A</b> <span>▶</span></button>
+              <button class="text-action" data-view-link="calendar">Ir al mes para recuperar →</button>
+            </div>
+          </div>
+          <div class="photo-grid" id="photo-grid"></div>
+        </section>
+        <section class="history-section">
+          <div class="section-heading compact">
+            <div><p class="eyebrow">HISTORIAL</p><h2>Todos los registros</h2></div>
+          </div>
+          <div class="history-table-wrap">
+            <table>
+              <thead><tr><th>Fecha</th><th>Tipo</th><th>Actividad</th><th>Min</th><th>Medidas</th><th></th></tr></thead>
+              <tbody id="history-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view calendar-view" data-view="calendar">
+        <div class="page-intro calendar-intro">
+          <p class="eyebrow">CALENDARIO MENSUAL</p>
+          <h1>El mes completo.<br />Sin esconder los días.</h1>
+          <p>Comprueba qué días hiciste la sesión base, cuáles moviste y qué puedes recuperar sin complicarte.</p>
+        </div>
+        <section class="month-section">
+          <div class="month-toolbar">
+            <button data-month-offset="-1" aria-label="Mes anterior">←</button>
+            <div><p class="eyebrow">SEGUIMIENTO</p><h2 id="month-title">Junio 2026</h2></div>
+            <button data-month-offset="1" aria-label="Mes siguiente">→</button>
+          </div>
+          <div class="month-summary" id="month-summary"></div>
+          <div class="month-legend">
+            <span><i class="status-done"></i> Hecho</span>
+            <span><i class="status-recovered"></i> Recuperado</span>
+            <span><i class="status-missed"></i> Fallado</span>
+            <span><i class="status-planned"></i> Pendiente</span>
+            <span><i class="status-rest"></i> Descanso</span>
+          </div>
+          <div class="month-grid" id="month-grid"></div>
+        </section>
+      </section>
+
+      <section class="view" data-view="plan">
+        <div class="page-intro">
+          <p class="eyebrow">PLAN 30 MIN</p>
+          <h1>Buen físico.<br />Menos vueltas.</h1>
+          <p>Repite la misma sesión base y usa Express cuando no tengas tiempo. Flexiones, planchas y core son el centro.</p>
+        </div>
+        <div class="plan-toolbar" id="plan-toolbar"></div>
+        <div class="plan-content" id="plan-content"></div>
+        <section class="phase-section">
+          <p class="eyebrow">ENFOQUE</p>
+          <div class="phase-grid">
+            <article><small>BASE</small><h3>DIARIA</h3><p>Una sesión y repetir: flexiones, variantes de pecho y abdomen.</p></article>
+            <article><small>EXTRA</small><h3>Bote/Cardio</h3><p>20-30 min suaves cuando apetezca. No sustituyen al bloque de fuerza.</p></article>
+            <article><small>REGLA</small><h3>Subir</h3><p>Cuando completes el rango alto fácil, añade repeticiones, tempo lento o una serie.</p></article>
+          </div>
+        </section>
+      </section>
+
+    </main>
+
+    <nav class="mobile-nav" aria-label="Navegación móvil">
+      <button data-view-link="dashboard" class="is-active"><span>HOY</span></button>
+      <button data-view-link="log"><span>SUMAR</span></button>
+      <button data-view-link="progress"><span>PROGRESO</span></button>
+      <button data-view-link="calendar"><span>MES</span></button>
+      <button data-view-link="plan"><span>PLAN</span></button>
+    </nav>
+    <section class="workout-overlay" id="workout-overlay" aria-live="polite" aria-label="Entrenamiento guiado">
+      <div class="workout-topbar">
+        <div><span class="score-label">ENTRENAMIENTO EN CURSO</span><strong id="workout-session-label">SESIÓN A</strong></div>
+        <div class="workout-elapsed"><small>TIEMPO TOTAL</small><strong id="workout-elapsed">00:00</strong></div>
+        <button class="workout-close" data-abandon-workout aria-label="Cerrar entrenamiento">×</button>
+      </div>
+      <div class="workout-body">
+        <div class="workout-progress"><span id="workout-position">1 / 7</span><div><i id="workout-progress-bar"></i></div></div>
+        <div class="workout-layout">
+          <div class="workout-art" id="workout-art"></div>
+          <div class="workout-copy">
+            <p class="eyebrow" id="workout-series-label">EJERCICIO 1</p>
+            <h2 id="workout-exercise-name">Press de pecho</h2>
+            <p class="workout-cue" id="workout-cue"></p>
+            <div class="workout-prescription">
+              <article><small>SERIES</small><strong id="workout-sets">4</strong></article>
+              <article><small>REPETICIONES</small><strong id="workout-reps">8-12</strong></article>
+              <article><small>DESCANSO</small><strong id="workout-rest">90 s</strong></article>
+            </div>
+            <div class="set-dots" id="set-dots"></div>
+            <div class="rest-zone" id="rest-zone">
+              <p class="eyebrow">DESCANSO ACTIVO</p>
+              <strong id="rest-countdown">01:30</strong>
+              <div><button data-add-rest>Añadir 30 s</button><button data-skip-rest>Saltar descanso</button></div>
+            </div>
+            <div class="workout-actions">
+              <button class="primary-action" data-complete-set>Serie hecha <span>✓</span></button>
+              <button class="workout-secondary" data-next-exercise>Siguiente ejercicio →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <footer class="workout-footer">
+        <span id="workout-footer-copy">Técnica limpia. Sin prisa.</span>
+        <button data-finish-workout>Terminar y guardar entreno</button>
+      </footer>
+    </section>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
