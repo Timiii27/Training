@@ -36,6 +36,16 @@ function FrameStack({ frames, alt }) {
   );
 }
 
+function ExerciseTags({ exercise }) {
+  if (!exercise?.focus && !exercise?.equipment) return null;
+  return (
+    <div className="exercise-tags">
+      {exercise.focus && <span className="tag tag-focus">{exercise.focus}</span>}
+      {exercise.equipment && <span className="tag">{exercise.equipment}</span>}
+    </div>
+  );
+}
+
 export function AuthScreen({ authEmail, authPassword, isSaving, message, onEmailChange, onPasswordChange, onSubmit }) {
   return (
     <main className="auth-shell">
@@ -494,6 +504,7 @@ export function TrainingSection({ quickItems = quickPlan, routinePlan, storedWor
                 <p>
                   {exercise.sets} x {exercise.reps} · descanso {exercise.rest}s
                 </p>
+                <ExerciseTags exercise={exercise} />
                 {exercise.referenceUrl && (
                   <a className="reference-link" href={exercise.referenceUrl} target="_blank" rel="noreferrer">
                     Ver tecnica
@@ -799,6 +810,7 @@ export function WorkoutPlayer({
               <div className="media-name">{activeExercise.name}</div>
             </div>
             <div className="player-body">
+              <ExerciseTags exercise={activeExercise} />
               <p className="cue">{activeExercise.cue}</p>
 
               {lastWorkout && (
