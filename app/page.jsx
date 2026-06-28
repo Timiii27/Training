@@ -15,6 +15,7 @@ import {
 import { createClient } from "../lib/supabase/client";
 import {
   ACTIVE_WORKOUT_KEY,
+  THEME_STORAGE_KEY,
   blankHabitForm,
   countCompletedSets,
   defaultHabitSeeds,
@@ -30,6 +31,7 @@ import {
   getMotivationMessage,
   getUnlockedAchievements,
   habitToForm,
+  lastWorkoutForRoutine,
   localIso,
   logKey,
   normalizeRoutine,
@@ -115,6 +117,25 @@ export default function HomePage() {
   const [wakeLockStatus, setWakeLockStatus] = useState("idle");
   const [motionMessage, setMotionMessage] = useState("");
   const [now, setNow] = useState(Date.now());
+  const [themeMode, setThemeMode] = useState("auto");
+
+  useEffect(() => {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === "light" || stored === "dark" || stored === "auto") setThemeMode(stored);
+  }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (themeMode === "auto") root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", themeMode);
+    localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+  }, [themeMode]);
+
+  useEffect(() => {
+    if (!message) return undefined;
+    const timer = setTimeout(() => setMessage(""), 4200);
+    return () => clearTimeout(timer);
+  }, [message]);
 
   useEffect(() => {
     let mounted = true;
@@ -499,11 +520,13 @@ export default function HomePage() {
     );
   }
 
-  async function finishWorkout(status = "completed") {
+  async function finishWorkout() {
     if (!session?.user || !activeWorkout) return;
 
     setIsSaving(true);
     const totalSets = countCompletedSets(activeWorkout.completedSets);
+    const targetSets = routinePlan.exercises.reduce((sum, exercise) => sum + (exercise.sets || 0), 0);
+    const status = targetSets > 0 && totalSets >= targetSets ? "completed" : "partial";
     const duration = Math.max(1, Math.round(workoutElapsedFor(activeWorkout) / 60));
     const { error } = await supabase.from("workouts").insert({
       user_id: session.user.id,
@@ -533,23 +556,36 @@ export default function HomePage() {
     const date = localIso();
     const existing = habitLogs.find((log) => log.habit_id === habit.id && log.date === date);
 
+    // Optimistic UI: el check se refleja al instante, sin esperar al servidor.
     if (existing) {
-      const { error } = await supabase.from("habit_logs").delete().eq("id", existing.id).eq("user_id", session.user.id);
-      if (error) setMessage(error.message);
+      setHabitLogs((current) => current.filter((log) => log.id !== existing.id));
     } else {
-      const { error } = await supabase.from("habit_logs").upsert(
-        {
-          habit_id: habit.id,
-          user_id: session.user.id,
-          date,
-          count: safeNumber(habit.target_count),
-          status: "completed",
-        },
-        { onConflict: "habit_id,date" },
-      );
-      if (error) setMessage(error.message);
+      const optimistic = {
+        id: `optimistic-${habit.id}-${date}`,
+        habit_id: habit.id,
+        user_id: session.user.id,
+        date,
+        count: safeNumber(habit.target_count),
+        status: "completed",
+      };
+      setHabitLogs((current) => [optimistic, ...current]);
     }
 
+    const result = existing
+      ? await supabase.from("habit_logs").delete().eq("id", existing.id).eq("user_id", session.user.id)
+      : await supabase.from("habit_logs").upsert(
+          {
+            habit_id: habit.id,
+            user_id: session.user.id,
+            date,
+            count: safeNumber(habit.target_count),
+            status: "completed",
+          },
+          { onConflict: "habit_id,date" },
+        );
+
+    if (result.error) setMessage(result.error.message);
+    // Resincroniza (logros, rachas y estado real) en segundo plano.
     await loadData();
   }
 
@@ -588,6 +624,7 @@ export default function HomePage() {
 
   async function deleteHabit(habit) {
     if (!session?.user || !habit?.id) return;
+    if (!window.confirm(`Eliminar el habito "${habit.title}"? Esta accion no se puede deshacer.`)) return;
     const { error } = await supabase.from("habits").delete().eq("id", habit.id).eq("user_id", session.user.id);
     if (error) setMessage(error.message);
     else {
@@ -708,12 +745,14 @@ export default function HomePage() {
   }
 
   async function deleteWorkout(id) {
+    if (!window.confirm("Eliminar este entreno?")) return;
     const { error } = await supabase.from("workouts").delete().eq("id", id);
     if (error) setMessage(error.message);
     else await loadData();
   }
 
   async function deletePhoto(photo) {
+    if (!window.confirm("Eliminar esta foto?")) return;
     const response = await fetch("/api/photos", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -849,6 +888,7 @@ export default function HomePage() {
     currentStreak,
     nextAchievement,
   });
+  const lastWorkout = lastWorkoutForRoutine(workouts, routinePlan.title);
   const activeExercise = activeWorkout ? routinePlan.exercises[activeWorkout.exerciseIndex] : null;
   const activeDoneSets = activeWorkout && activeExercise ? activeWorkout.completedSets[activeExercise.name] || 0 : 0;
   const activeRestLeft = restLeftFor(activeWorkout, now);
@@ -965,6 +1005,8 @@ export default function HomePage() {
         <SettingsSection
           profile={profileDraft}
           activeHabits={habits.filter((habit) => habit.is_active)}
+          themeMode={themeMode}
+          onThemeModeChange={setThemeMode}
           onChangeProfile={(patch) => setProfileDraft((current) => ({ ...current, ...patch }))}
           onSaveProfile={saveProfile}
         />
@@ -978,6 +1020,7 @@ export default function HomePage() {
         activeWorkout={activeWorkout}
         countdownCue={countdownCue}
         isSaving={isSaving}
+        lastWorkout={lastWorkout}
         motionMessage={motionMessage}
         routinePlan={routinePlan}
         shakeEnabled={shakeEnabled}

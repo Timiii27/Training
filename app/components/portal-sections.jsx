@@ -1,15 +1,40 @@
-import { ChartNoAxesColumn, Dumbbell, Flame, LogOut, RotateCcw, SlidersHorizontal, Sun } from "lucide-react";
+import { useState } from "react";
+import {
+  ChartNoAxesColumn,
+  ChevronLeft,
+  ChevronRight,
+  Dumbbell,
+  Flame,
+  LogOut,
+  RotateCcw,
+  SlidersHorizontal,
+  Sun,
+  X,
+} from "lucide-react";
 import {
   categoryOptions,
   colorOptions,
+  countCompletedSets,
   formatShortDate,
+  framesFor,
   monthLabel,
   quickPlan,
   secondsLabel,
+  themeModeOptions,
   themeOptions,
   trendPoints,
   weekdayOptions,
 } from "../../lib/portal/defaults";
+
+function FrameStack({ frames, alt }) {
+  const list = frames?.length ? frames : ["/assets/exercises/pushup.jpg"];
+  return (
+    <div className="frame-stack">
+      <img src={list[0]} alt={alt} loading="lazy" />
+      {list[1] && <img className="frame-b" src={list[1]} alt="" aria-hidden="true" loading="lazy" />}
+    </div>
+  );
+}
 
 export function AuthScreen({ authEmail, authPassword, isSaving, message, onEmailChange, onPasswordChange, onSubmit }) {
   return (
@@ -60,16 +85,22 @@ export function AppHeader({ displayName, activeView, onViewChange, onSignOut }) 
         <p className="eyebrow">Portal Diario</p>
         <h1>{displayName}</h1>
       </div>
-      <nav className="topbar-nav" aria-label="Secciones del portal">
+      <nav className="app-nav" aria-label="Secciones del portal">
         {views.map(({ key, label, Icon }) => (
-          <button key={key} type="button" className={`${activeView === key ? "active" : ""} nav-${key}`} onClick={() => onViewChange(key)}>
-            <Icon size={17} strokeWidth={2.4} />
-            {label}
+          <button
+            key={key}
+            type="button"
+            className={`${activeView === key ? "active" : ""} nav-${key}`}
+            aria-current={activeView === key ? "page" : undefined}
+            onClick={() => onViewChange(key)}
+          >
+            <Icon size={18} strokeWidth={2.4} />
+            <span className="nav-label">{label}</span>
           </button>
         ))}
       </nav>
       <div className="topbar-actions">
-        <span className="user-pill">{displayName.slice(0, 1)}</span>
+        <span className="user-pill" aria-hidden="true">{displayName.slice(0, 1)}</span>
         <button className="ghost-action compact" onClick={onSignOut}>
           <LogOut size={15} strokeWidth={2.4} />
           Salir
@@ -99,10 +130,11 @@ export function TodayDashboard({
 }) {
   const remaining = Math.max(0, dueHabits.length - completedToday);
   const emptyHabits = dueHabits.length === 0;
+  const dayComplete = !emptyHabits && completionRate === 100;
 
   return (
     <section className="today-layout">
-      <div className="today-hero">
+      <div className={`today-hero ${dayComplete ? "is-complete" : ""}`}>
         <span className="panel-kicker">Hoy</span>
         <h2>{emptyHabits ? `${displayName}, configura tu primer habito.` : remaining ? `${displayName}, quedan ${remaining} habitos.` : `${displayName}, dia completo.`}</h2>
         <p>
@@ -124,7 +156,7 @@ export function TodayDashboard({
           <button className="primary-action" onClick={() => onSelectView("habits")}>
             Revisar habitos
           </button>
-          <button className="ghost-action" onClick={() => onSelectView("progress")}>
+          <button className="secondary-action" onClick={() => onSelectView("progress")}>
             Check-in rapido
           </button>
         </div>
@@ -379,6 +411,7 @@ export function HabitsSection({
                   key={day.value}
                   type="button"
                   className={active ? "active" : ""}
+                  aria-pressed={active}
                   onClick={() => {
                     const next = active
                       ? habitForm.days_of_week.filter((value) => value !== day.value)
@@ -412,7 +445,7 @@ export function HabitsSection({
 export function HabitRow({ completed, habit, onDelete, onEdit, onToggle, showActions = false }) {
   return (
     <article className={`habit-row ${completed ? "done" : ""} tone-${habit.color_key || "sage"} ${habit.is_active ? "" : "disabled"}`}>
-      <button type="button" className="check-dot" onClick={onToggle} aria-label={completed ? "Desmarcar habito" : "Completar habito"}>
+      <button type="button" className="check-dot" onClick={onToggle} aria-label={completed ? "Desmarcar habito" : "Completar habito"} aria-pressed={completed}>
         {completed ? "✓" : ""}
       </button>
       <div>
@@ -425,10 +458,10 @@ export function HabitRow({ completed, habit, onDelete, onEdit, onToggle, showAct
       </div>
       {showActions && (
         <div className="row-actions">
-          <button type="button" onClick={onEdit}>
+          <button type="button" className="ghost-action compact" onClick={onEdit}>
             Editar
           </button>
-          <button type="button" onClick={onDelete}>
+          <button type="button" className="danger-action compact" onClick={onDelete}>
             Borrar
           </button>
         </div>
@@ -454,9 +487,9 @@ export function TrainingSection({ quickItems = quickPlan, routinePlan, storedWor
         <div className="exercise-grid">
           {routinePlan.exercises.map((exercise, index) => (
             <article key={exercise.name} className="exercise-tile">
-              <img src={exercise.image} alt={exercise.name} />
+              <FrameStack frames={framesFor(exercise)} alt={exercise.name} />
               <div>
-                <span>{index + 1}</span>
+                <span className="exercise-index">{index + 1}</span>
                 <h3>{exercise.name}</h3>
                 <p>
                   {exercise.sets} x {exercise.reps} · descanso {exercise.rest}s
@@ -490,7 +523,7 @@ export function TrainingSection({ quickItems = quickPlan, routinePlan, storedWor
                   {item.activity} · {item.duration || "-"} min
                 </span>
               </div>
-              <button onClick={() => onDeleteWorkout(item.id)}>Borrar</button>
+              <button className="danger-action compact" onClick={() => onDeleteWorkout(item.id)}>Borrar</button>
             </article>
           ))}
           {!workouts.length && <p className="empty-state">Aun no hay entrenos guardados.</p>}
@@ -594,7 +627,7 @@ export function ProgressSection({
               <figcaption>
                 {formatShortDate(photo.date)} · {photo.note || "sin nota"}
               </figcaption>
-              <button onClick={() => onDeletePhoto(photo)}>Eliminar</button>
+              <button className="danger-action compact" onClick={() => onDeletePhoto(photo)}>Eliminar</button>
             </figure>
           ))}
           {!photos.length && <p className="empty-state">Sin imagenes todavia.</p>}
@@ -613,9 +646,13 @@ export function CalendarSection({ calendarDays, habitLogDates, month, today, tra
           <h2>{monthLabel(month)}</h2>
         </div>
         <div className="month-controls">
-          <button onClick={() => onMonthChange(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>←</button>
-          <button onClick={() => onMonthChange(new Date())}>Hoy</button>
-          <button onClick={() => onMonthChange(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>→</button>
+          <button className="icon-button" aria-label="Mes anterior" onClick={() => onMonthChange(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>
+            <ChevronLeft size={18} strokeWidth={2.6} />
+          </button>
+          <button className="ghost-action compact" onClick={() => onMonthChange(new Date())}>Hoy</button>
+          <button className="icon-button" aria-label="Mes siguiente" onClick={() => onMonthChange(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>
+            <ChevronRight size={18} strokeWidth={2.6} />
+          </button>
         </div>
       </div>
       <div className="weekday-row">{["L", "M", "X", "J", "V", "S", "D"].map((day) => <span key={day}>{day}</span>)}</div>
@@ -643,7 +680,7 @@ export function CalendarSection({ calendarDays, habitLogDates, month, today, tra
   );
 }
 
-export function SettingsSection({ profile, activeHabits, onChangeProfile, onSaveProfile }) {
+export function SettingsSection({ profile, activeHabits, themeMode, onThemeModeChange, onChangeProfile, onSaveProfile }) {
   return (
     <section className="workspace-grid">
       <form className="workspace-main" onSubmit={onSaveProfile}>
@@ -664,6 +701,22 @@ export function SettingsSection({ profile, activeHabits, onChangeProfile, onSave
             ))}
           </select>
         </label>
+        <div>
+          <label style={{ marginBottom: "8px" }}>Apariencia</label>
+          <div className="theme-toggle" role="group" aria-label="Modo claro u oscuro">
+            {themeModeOptions.map((mode) => (
+              <button
+                key={mode.key}
+                type="button"
+                className={themeMode === mode.key ? "active" : ""}
+                aria-pressed={themeMode === mode.key}
+                onClick={() => onThemeModeChange(mode.key)}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <button className="primary-action">Guardar ajustes</button>
       </form>
       <aside className="side-panel">
@@ -689,6 +742,7 @@ export function WorkoutPlayer({
   activeWorkout,
   countdownCue,
   isSaving,
+  lastWorkout,
   motionMessage,
   routinePlan,
   shakeEnabled,
@@ -703,83 +757,153 @@ export function WorkoutPlayer({
   onToggleShake,
   onToggleSound,
 }) {
+  const [showSummary, setShowSummary] = useState(false);
+
   if (!activeWorkout) return null;
 
+  const exercises = routinePlan.exercises;
+  const totalTargetSets = exercises.reduce((sum, item) => sum + (item.sets || 0), 0);
+  const totalDoneSets = countCompletedSets(activeWorkout.completedSets);
+  const sessionPercent = totalTargetSets ? Math.round((totalDoneSets / totalTargetSets) * 100) : 0;
+  const exercisesDone = exercises.filter((item) => (activeWorkout.completedSets[item.name] || 0) >= item.sets).length;
+  const nextExercise = exercises[activeWorkout.exerciseIndex + 1] || null;
+  const isResting = activeRestLeft > 0;
+  const exerciseComplete = activeExercise ? activeDoneSets >= activeExercise.sets : false;
+
   return (
-    <div className="workout-modal">
+    <div className="workout-modal" role="dialog" aria-modal="true" aria-label="Entrenamiento en curso">
       <div className="workout-player">
         {countdownCue && <div className="countdown-overlay">{countdownCue}</div>}
+
         <header className="player-header">
-          <div>
-            <span className="panel-kicker">
-              Ejercicio {activeWorkout.exerciseIndex + 1} / {routinePlan.exercises.length}
-            </span>
+          <button className="icon-button" aria-label="Cerrar entreno" onClick={onClear}>
+            <X size={18} strokeWidth={2.6} />
+          </button>
+          <div className="player-header-info">
+            <span>Ejercicio {activeWorkout.exerciseIndex + 1} / {exercises.length}</span>
             <strong>{secondsLabel(activeElapsed)}</strong>
           </div>
-          <div className="player-status">
-            <span>{wakeLockStatus === "active" ? "Pantalla activa" : wakeLockStatus === "unsupported" ? "Sin Wake Lock" : "Pantalla normal"}</span>
-            <button type="button" onClick={onToggleSound}>
-              {soundEnabled ? "Sonido ON" : "Sonido OFF"}
-            </button>
-          </div>
+          <button className={`icon-button ${soundEnabled ? "is-on" : ""}`} aria-label={soundEnabled ? "Silenciar" : "Activar sonido"} aria-pressed={soundEnabled} onClick={onToggleSound}>
+            {soundEnabled ? "🔊" : "🔈"}
+          </button>
         </header>
 
+        <div className="player-progress" aria-hidden="true">
+          <span style={{ width: `${sessionPercent}%` }} />
+        </div>
+
         {activeExercise && (
-          <>
+          <div className="player-scroll">
             <div className="player-media">
-              <img src={activeExercise.image} alt={activeExercise.name} />
+              <FrameStack frames={framesFor(activeExercise)} alt={activeExercise.name} />
+              <div className="media-name">{activeExercise.name}</div>
             </div>
-            <div className="player-content">
-              <h2>{activeExercise.name}</h2>
-              <p>{activeExercise.cue}</p>
-              <div className="set-counter">
+            <div className="player-body">
+              <p className="cue">{activeExercise.cue}</p>
+
+              {lastWorkout && (
+                <span className="last-time">
+                  Ultima vez: {formatShortDate(lastWorkout.date)} · {lastWorkout.duration || "-"} min
+                </span>
+              )}
+
+              <div className="set-counter" aria-label={`${activeDoneSets} de ${activeExercise.sets} series`}>
                 {Array.from({ length: activeExercise.sets }, (_, index) => (
                   <i key={index} className={index < activeDoneSets ? "on" : ""} />
                 ))}
               </div>
               <strong className="rep-line">
                 {activeExercise.sets} x {activeExercise.reps}
+                <small>{exerciseComplete ? "Ejercicio completo" : `Serie ${Math.min(activeDoneSets + 1, activeExercise.sets)} de ${activeExercise.sets}`}</small>
               </strong>
-              <div className={`timer-box ${activeRestLeft > 0 ? "is-resting" : ""}`}>
-                <span>{activeRestLeft > 0 ? "Descanso" : "Listo para serie"}</span>
+
+              <div className={`timer-box ${isResting ? "is-resting" : ""}`}>
+                <span>{isResting ? "Descanso" : "Listo para serie"}</span>
                 <strong>{secondsLabel(activeRestLeft)}</strong>
               </div>
+
+              {nextExercise && (
+                <span className="last-time">Siguiente: {nextExercise.name}</span>
+              )}
+
               <div className="player-toggles">
-                <button type="button" onClick={onToggleShake} className={shakeEnabled ? "is-on" : ""}>
+                <button type="button" className={`ghost-action compact ${shakeEnabled ? "is-on" : ""}`} aria-pressed={shakeEnabled} onClick={onToggleShake}>
                   {shakeEnabled ? "Agitar ON" : "Agitar para serie"}
                 </button>
+                <span>{wakeLockStatus === "active" ? "Pantalla activa" : wakeLockStatus === "unsupported" ? "Sin Wake Lock" : ""}</span>
                 {motionMessage && <span>{motionMessage}</span>}
               </div>
             </div>
-          </>
+          </div>
         )}
 
         <footer className="player-footer">
-          <button className="primary-action" onClick={() => onMarkSet("tap")} disabled={!activeExercise || activeDoneSets >= activeExercise.sets || activeRestLeft > 0}>
-            Serie hecha
-          </button>
-          <button className="ghost-action" onClick={onSkipRest} disabled={activeRestLeft <= 0}>
-            Saltar
-          </button>
-          <button className="ghost-action" onClick={() => onAddRest(30)} disabled={activeRestLeft <= 0}>
-            +30s
-          </button>
-          <button className="ghost-action" onClick={() => onMoveExercise(-1)} disabled={activeWorkout.exerciseIndex === 0}>
-            Anterior
-          </button>
-          <button className="ghost-action" onClick={() => onMoveExercise(1)} disabled={activeWorkout.exerciseIndex === routinePlan.exercises.length - 1}>
-            Siguiente
-          </button>
-          <button className="ghost-action" onClick={() => onFinish("partial")} disabled={isSaving}>
-            Guardar parcial
-          </button>
-          <button className="ghost-action" onClick={() => onFinish("completed")} disabled={isSaving}>
-            Terminar
-          </button>
-          <button className="ghost-action" onClick={onClear}>
-            Cerrar
-          </button>
+          {isResting ? (
+            <>
+              <button className="primary-action" onClick={onSkipRest}>
+                Saltar descanso
+              </button>
+              <div className="player-footer-row">
+                <button className="ghost-action" onClick={() => onAddRest(30)}>
+                  +30s descanso
+                </button>
+                <button className="ghost-action" onClick={() => setShowSummary(true)} disabled={isSaving}>
+                  Terminar
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <button className="primary-action" onClick={() => onMarkSet("tap")} disabled={!activeExercise || exerciseComplete}>
+                {exerciseComplete ? "Ejercicio completo" : "Serie hecha"}
+              </button>
+              <div className="player-footer-row">
+                <div className="player-nav">
+                  <button className="icon-button" aria-label="Ejercicio anterior" onClick={() => onMoveExercise(-1)} disabled={activeWorkout.exerciseIndex === 0}>
+                    <ChevronLeft size={18} strokeWidth={2.6} />
+                  </button>
+                  <button className="icon-button" aria-label="Ejercicio siguiente" onClick={() => onMoveExercise(1)} disabled={activeWorkout.exerciseIndex === exercises.length - 1}>
+                    <ChevronRight size={18} strokeWidth={2.6} />
+                  </button>
+                </div>
+                <button className="ghost-action" onClick={() => setShowSummary(true)} disabled={isSaving}>
+                  Terminar
+                </button>
+              </div>
+            </>
+          )}
         </footer>
+
+        {showSummary && (
+          <div className="player-summary">
+            <div>
+              <span className="panel-kicker">Resumen</span>
+              <h2>{totalDoneSets >= totalTargetSets ? "Entreno completo" : "Buen trabajo"}</h2>
+            </div>
+            <div className="summary-stats">
+              <div>
+                <strong>{totalDoneSets}</strong>
+                <span>series</span>
+              </div>
+              <div>
+                <strong>{secondsLabel(activeElapsed)}</strong>
+                <span>tiempo</span>
+              </div>
+              <div>
+                <strong>{exercisesDone}/{exercises.length}</strong>
+                <span>ejercicios</span>
+              </div>
+            </div>
+            <div className="summary-actions">
+              <button className="primary-action" disabled={isSaving} onClick={() => { setShowSummary(false); onFinish(); }}>
+                {isSaving ? "Guardando..." : "Guardar entreno"}
+              </button>
+              <button className="ghost-action" disabled={isSaving} onClick={() => setShowSummary(false)}>
+                Seguir entrenando
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
