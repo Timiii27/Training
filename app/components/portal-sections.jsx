@@ -24,6 +24,8 @@ import {
   themeOptions,
   trendPoints,
   weekdayOptions,
+  workoutTypeLabel,
+  workoutTypeOptions,
 } from "../../lib/portal/defaults";
 
 function FrameStack({ frames, alt }) {
@@ -480,7 +482,23 @@ export function HabitRow({ completed, habit, onDelete, onEdit, onToggle, showAct
   );
 }
 
-export function TrainingSection({ quickItems = quickPlan, routinePlan, storedWorkout, todayWorkout, workouts, onDeleteWorkout, onStartWorkout }) {
+export function TrainingSection({
+  quickItems = quickPlan,
+  routinePlan,
+  plans = [],
+  manualWorkout,
+  storedWorkout,
+  todayWorkout,
+  today,
+  workouts,
+  onChangeManual,
+  onSubmitManual,
+  onDeleteWorkout,
+  onStartWorkout,
+}) {
+  const isStrength = manualWorkout?.type === "strength";
+  const hasPlans = plans.length > 0;
+
   return (
     <section className="workspace-grid">
       <div className="workspace-main">
@@ -516,30 +534,91 @@ export function TrainingSection({ quickItems = quickPlan, routinePlan, storedWor
         </div>
       </div>
 
-      <aside className="side-panel">
-        <span className="panel-kicker">Express</span>
-        <h2>Cuando hay poco tiempo</h2>
-        <ul className="quick-list">
-          {quickItems.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-        <div className="history-list">
-          <h3>Ultimos entrenos</h3>
-          {workouts.slice(0, 8).map((item) => (
-            <article key={item.id}>
-              <div>
-                <strong>{formatShortDate(item.date)}</strong>
-                <span>
-                  {item.activity} · {item.duration || "-"} min
-                </span>
-              </div>
-              <button className="danger-action compact" onClick={() => onDeleteWorkout(item.id)}>Borrar</button>
-            </article>
-          ))}
-          {!workouts.length && <p className="empty-state">Aun no hay entrenos guardados.</p>}
-        </div>
-      </aside>
+      <div className="training-side">
+        {manualWorkout && (
+          <form className="side-panel" onSubmit={onSubmitManual}>
+            <span className="panel-kicker">Registrar entreno</span>
+            <h2>Anade una sesion hecha</h2>
+            <p className="section-copy">Para entrenos sin app: baloncesto, cardio, bici o una sesion de fuerza de un dia pasado.</p>
+            <label>
+              Tipo
+              <select value={manualWorkout.type} onChange={(event) => onChangeManual({ type: event.target.value })}>
+                {workoutTypeOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {isStrength && hasPlans ? (
+              <label>
+                Plan
+                <select value={manualWorkout.planId || plans[0].id} onChange={(event) => onChangeManual({ planId: event.target.value })}>
+                  {plans.map((plan) => (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.title}
+                      {plan.active ? " · activo" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label>
+                Actividad
+                <input
+                  value={manualWorkout.activity}
+                  onChange={(event) => onChangeManual({ activity: event.target.value })}
+                  placeholder={`Ej: ${workoutTypeLabel(manualWorkout.type)}`}
+                />
+              </label>
+            )}
+            <div className="field-grid two">
+              <label>
+                Fecha
+                <input type="date" max={today} value={manualWorkout.date} onChange={(event) => onChangeManual({ date: event.target.value })} />
+              </label>
+              <label>
+                Duracion min
+                <input inputMode="numeric" value={manualWorkout.duration} onChange={(event) => onChangeManual({ duration: event.target.value })} placeholder="45" />
+              </label>
+            </div>
+            <label>
+              Nota
+              <input value={manualWorkout.note} onChange={(event) => onChangeManual({ note: event.target.value })} placeholder="Sensaciones, intensidad..." />
+            </label>
+            <label className="toggle-row">
+              <input type="checkbox" checked={manualWorkout.markHabit} onChange={(event) => onChangeManual({ markHabit: event.target.checked })} />
+              Marcar el habito Entrenar ese dia
+            </label>
+            <button className="primary-action">Registrar entreno</button>
+          </form>
+        )}
+
+        <aside className="side-panel">
+          <span className="panel-kicker">Express</span>
+          <h2>Cuando hay poco tiempo</h2>
+          <ul className="quick-list">
+            {quickItems.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <div className="history-list">
+            <h3>Ultimos entrenos</h3>
+            {workouts.slice(0, 8).map((item) => (
+              <article key={item.id}>
+                <div>
+                  <strong>{formatShortDate(item.date)}</strong>
+                  <span>
+                    <em className="workout-type">{workoutTypeLabel(item.type)}</em> · {item.activity} · {item.duration || "-"} min
+                  </span>
+                </div>
+                <button className="danger-action compact" onClick={() => onDeleteWorkout(item.id)}>Borrar</button>
+              </article>
+            ))}
+            {!workouts.length && <p className="empty-state">Aun no hay entrenos guardados.</p>}
+          </div>
+        </aside>
+      </div>
     </section>
   );
 }

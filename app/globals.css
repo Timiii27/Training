@@ -1176,6 +1176,18 @@ textarea:focus {
 }
 
 /* ===== Historial / express ===== */
+.training-side {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.workout-type {
+  font-style: normal;
+  font-weight: 900;
+  color: var(--accent-strong);
+}
+
 .history-list {
   display: grid;
   gap: 10px;

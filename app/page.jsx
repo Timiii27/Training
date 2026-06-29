@@ -37,7 +37,12 @@ import {
   normalizeRoutine,
   restLeftFor,
   workoutElapsedFor,
+  workoutTypeLabel,
 } from "../lib/portal/defaults";
+
+function blankManualWorkout() {
+  return { date: localIso(), type: "strength", planId: "", activity: "", duration: "", note: "", markHabit: true };
+}
 
 const SHAKE_THRESHOLD = 28;
 const SHAKE_COOLDOWN_MS = 1400;
@@ -105,6 +110,8 @@ export default function HomePage() {
   const [measurements, setMeasurements] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [routinePlan, setRoutinePlan] = useState(fallbackWorkoutPlan);
+  const [plans, setPlans] = useState([]);
+  const [manualWorkout, setManualWorkout] = useState(blankManualWorkout());
   const [month, setMonth] = useState(new Date());
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [measureForm, setMeasureForm] = useState({ date: localIso(), weight: "", waist: "", note: "" });
@@ -167,6 +174,8 @@ export default function HomePage() {
       setMeasurements([]);
       setPhotos([]);
       setRoutinePlan(fallbackWorkoutPlan);
+      setPlans([]);
+      setManualWorkout(blankManualWorkout());
       setStoredWorkout(null);
       return;
     }
@@ -346,7 +355,7 @@ export default function HomePage() {
     setLoading(true);
     setMessage("");
 
-    const [workoutResult, measureResult, profileResult, habitsResult, logsResult, achievementResult, photoResult, routine] = await Promise.all([
+    const [workoutResult, measureResult, profileResult, habitsResult, logsResult, achievementResult, photoResult, plansResult, routine] = await Promise.all([
       supabase.from("workouts").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("measurements").select("*").order("date", { ascending: true }).order("created_at", { ascending: true }),
       supabase.from("user_profiles").select("*").eq("id", session.user.id).maybeSingle(),
@@ -354,6 +363,7 @@ export default function HomePage() {
       supabase.from("habit_logs").select("*").eq("user_id", session.user.id).order("date", { ascending: false }).limit(500),
       supabase.from("user_achievements").select("*").eq("user_id", session.user.id).order("unlocked_at", { ascending: true }),
       fetch("/api/photos").then((response) => response.json()).catch((error) => ({ ok: false, error: error.message })),
+      supabase.from("routine_templates").select("id,title,active").or(`user_id.eq.${session.user.id},user_id.is.null`).order("active", { ascending: false }).order("created_at", { ascending: false }),
       loadRoutine(),
     ]);
 
@@ -406,6 +416,7 @@ export default function HomePage() {
       message: photoResult.storageReady ? "" : "El almacenamiento de imagenes aun no esta preparado.",
     });
     setRoutinePlan(routine);
+    setPlans(plansResult.error ? [] : plansResult.data || []);
     setHabitForm(blankHabitForm((nextHabits.length + 1) * 10));
     setLoading(false);
   }
@@ -505,19 +516,59 @@ export default function HomePage() {
     });
   }
 
-  async function completeTrainingHabit() {
+  async function completeTrainingHabit(date = localIso()) {
     const trainingHabit = habits.find((habit) => habit.is_active && habit.category === "Entreno");
     if (!trainingHabit) return;
     await supabase.from("habit_logs").upsert(
       {
         habit_id: trainingHabit.id,
         user_id: session.user.id,
-        date: localIso(),
+        date,
         count: safeNumber(trainingHabit.target_count),
         status: "completed",
       },
       { onConflict: "habit_id,date" },
     );
+  }
+
+  async function saveManualWorkout(event) {
+    event.preventDefault();
+    if (!session?.user) return;
+
+    setIsSaving(true);
+    const date = manualWorkout.date || localIso();
+    let activity = manualWorkout.activity.trim();
+    if (manualWorkout.type === "strength") {
+      const plan = plans.find((item) => item.id === manualWorkout.planId) || plans[0];
+      activity = plan?.title || activity || "Entreno de fuerza";
+    }
+    if (!activity) activity = workoutTypeLabel(manualWorkout.type);
+    const duration = manualWorkout.duration ? Math.max(1, Math.round(Number(manualWorkout.duration))) : null;
+    // La columna `type` tiene un check constraint (strength | cardio | rest).
+    // Guardamos el bucket valido y conservamos la actividad concreta en `activity`.
+    const dbType = manualWorkout.type === "strength" ? "strength" : manualWorkout.type === "mobility" ? "rest" : "cardio";
+
+    const { error } = await supabase.from("workouts").insert({
+      user_id: session.user.id,
+      date,
+      type: dbType,
+      status: "completed",
+      activity,
+      duration,
+      notes: manualWorkout.note.trim() || `Registro manual · ${workoutTypeLabel(manualWorkout.type)}.`,
+    });
+
+    if (!error && manualWorkout.markHabit) await completeTrainingHabit(date);
+
+    setIsSaving(false);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setMessage("Entreno registrado.");
+    setManualWorkout(blankManualWorkout());
+    await loadData();
   }
 
   async function finishWorkout() {
@@ -625,12 +676,22 @@ export default function HomePage() {
   async function deleteHabit(habit) {
     if (!session?.user || !habit?.id) return;
     if (!window.confirm(`Eliminar el habito "${habit.title}"? Esta accion no se puede deshacer.`)) return;
-    const { error } = await supabase.from("habits").delete().eq("id", habit.id).eq("user_id", session.user.id);
-    if (error) setMessage(error.message);
-    else {
-      setMessage("Habito eliminado.");
-      await loadData();
+    const { data, error } = await supabase
+      .from("habits")
+      .delete()
+      .eq("id", habit.id)
+      .eq("user_id", session.user.id)
+      .select("id");
+    if (error) {
+      setMessage(error.message);
+      return;
     }
+    if (!data || !data.length) {
+      setMessage("No se pudo borrar el habito. Falta el permiso de borrado (RLS) en Supabase.");
+      return;
+    }
+    setMessage("Habito eliminado.");
+    await loadData();
   }
 
   async function saveProfile(event) {
@@ -974,9 +1035,14 @@ export default function HomePage() {
       {activeView === "training" && (
         <TrainingSection
           routinePlan={routinePlan}
+          plans={plans}
+          manualWorkout={manualWorkout}
           storedWorkout={storedWorkout}
           todayWorkout={todayWorkout}
+          today={today}
           workouts={workouts}
+          onChangeManual={(patch) => setManualWorkout((current) => ({ ...current, ...patch }))}
+          onSubmitManual={saveManualWorkout}
           onDeleteWorkout={deleteWorkout}
           onStartWorkout={startOrContinueWorkout}
         />
