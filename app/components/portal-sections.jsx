@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from "react";
 import {
   ChartNoAxesColumn,
@@ -20,6 +22,7 @@ import {
   monthLabel,
   quickPlan,
   secondsLabel,
+  timedSecondsFor,
   themeModeOptions,
   themeOptions,
   trendPoints,
@@ -491,13 +494,16 @@ export function TrainingSection({
   todayWorkout,
   today,
   workouts,
+  isSaving,
   onChangeManual,
   onSubmitManual,
+  onSwitchRoutine,
   onDeleteWorkout,
   onStartWorkout,
 }) {
   const isStrength = manualWorkout?.type === "strength";
   const hasPlans = plans.length > 0;
+  const activePlanId = plans.find((plan) => plan.active)?.id || "";
 
   return (
     <section className="workspace-grid">
@@ -511,6 +517,18 @@ export function TrainingSection({
             {storedWorkout ? "Continuar" : "Comenzar"}
           </button>
         </div>
+        {plans.length > 1 && (
+          <label className="routine-switcher">
+            Rutina activa
+            <select value={activePlanId} disabled={isSaving} onChange={(event) => onSwitchRoutine(event.target.value)}>
+              {plans.map((plan) => (
+                <option key={plan.id} value={plan.id}>
+                  {plan.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <p className="section-copy">{todayWorkout ? "Ya hay un entreno guardado hoy. Puedes hacer otro bloque si te encaja." : routinePlan.promise}</p>
         <div className="exercise-grid">
           {routinePlan.exercises.map((exercise, index) => (
@@ -829,6 +847,7 @@ export function WorkoutPlayer({
   activeElapsed,
   activeExercise,
   activeRestLeft,
+  activeWorkLeft,
   activeWorkout,
   countdownCue,
   isSaving,
@@ -844,6 +863,7 @@ export function WorkoutPlayer({
   onMarkSet,
   onMoveExercise,
   onSkipRest,
+  onStartTimedSet,
   onToggleShake,
   onToggleSound,
 }) {
@@ -858,6 +878,8 @@ export function WorkoutPlayer({
   const exercisesDone = exercises.filter((item) => (activeWorkout.completedSets[item.name] || 0) >= item.sets).length;
   const nextExercise = exercises[activeWorkout.exerciseIndex + 1] || null;
   const isResting = activeRestLeft > 0;
+  const isWorking = activeWorkLeft > 0;
+  const timedSeconds = timedSecondsFor(activeExercise?.reps);
   const exerciseComplete = activeExercise ? activeDoneSets >= activeExercise.sets : false;
 
   return (
@@ -908,9 +930,9 @@ export function WorkoutPlayer({
                 <small>{exerciseComplete ? "Ejercicio completo" : `Serie ${Math.min(activeDoneSets + 1, activeExercise.sets)} de ${activeExercise.sets}`}</small>
               </strong>
 
-              <div className={`timer-box ${isResting ? "is-resting" : ""}`}>
-                <span>{isResting ? "Descanso" : "Listo para serie"}</span>
-                <strong>{secondsLabel(activeRestLeft)}</strong>
+              <div className={`timer-box ${isResting ? "is-resting" : ""} ${isWorking ? "is-working" : ""}`}>
+                <span>{isResting ? "Descanso" : isWorking ? "¡Trabajo!" : timedSeconds ? `Serie de ${timedSeconds} s` : "Listo para serie"}</span>
+                <strong>{secondsLabel(isWorking ? activeWorkLeft : activeRestLeft)}</strong>
               </div>
 
               {nextExercise && (
@@ -945,9 +967,21 @@ export function WorkoutPlayer({
             </>
           ) : (
             <>
-              <button className="primary-action" onClick={() => onMarkSet("tap")} disabled={!activeExercise || exerciseComplete}>
-                {exerciseComplete ? "Ejercicio completo" : "Serie hecha"}
-              </button>
+              {timedSeconds && !exerciseComplete ? (
+                isWorking ? (
+                  <button className="primary-action" onClick={() => onMarkSet("tap")}>
+                    Terminar serie · {secondsLabel(activeWorkLeft)}
+                  </button>
+                ) : (
+                  <button className="primary-action" onClick={onStartTimedSet} disabled={!activeExercise}>
+                    Empezar serie · {timedSeconds} s
+                  </button>
+                )
+              ) : (
+                <button className="primary-action" onClick={() => onMarkSet("tap")} disabled={!activeExercise || exerciseComplete}>
+                  {exerciseComplete ? "Ejercicio completo" : "Serie hecha"}
+                </button>
+              )}
               <div className="player-footer-row">
                 <div className="player-nav">
                   <button className="icon-button" aria-label="Ejercicio anterior" onClick={() => onMoveExercise(-1)} disabled={activeWorkout.exerciseIndex === 0}>

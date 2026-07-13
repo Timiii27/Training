@@ -36,6 +36,8 @@ import {
   logKey,
   normalizeRoutine,
   restLeftFor,
+  timedSecondsFor,
+  workLeftFor,
   workoutElapsedFor,
   workoutTypeLabel,
 } from "../lib/portal/defaults";
@@ -213,16 +215,27 @@ export default function HomePage() {
   useEffect(() => {
     if (!activeWorkout) return;
     const restLeft = restLeftFor(activeWorkout, now);
+    const workLeft = workLeftFor(activeWorkout, now);
     const cue = activeWorkout.restEndsAt && now - activeWorkout.restEndsAt < 1400 && now >= activeWorkout.restEndsAt
       ? "go"
       : [1, 2, 3].includes(restLeft)
-        ? String(restLeft)
-        : null;
+        ? `r${restLeft}`
+        : [1, 2, 3].includes(workLeft)
+          ? `w${workLeft}`
+          : null;
 
     if (!cue || cue === lastCueRef.current) return;
     lastCueRef.current = cue;
     if (soundEnabled) playBeep(cue === "go" ? 760 : 520, cue === "go" ? 170 : 110);
     if (cue === "go" && "vibrate" in navigator) navigator.vibrate?.([80, 40, 80]);
+  }, [activeWorkout, now, soundEnabled]);
+
+  // Cierra sola la serie por tiempo cuando el trabajo termina.
+  useEffect(() => {
+    if (!activeWorkout?.workEndsAt || now < activeWorkout.workEndsAt) return;
+    markSet("timer");
+    if (soundEnabled) playBeep(760, 200);
+    if ("vibrate" in navigator) navigator.vibrate?.([90, 50, 90]);
   }, [activeWorkout, now, soundEnabled]);
 
   useEffect(() => {
@@ -488,8 +501,21 @@ export default function HomePage() {
         completedSets: { ...current.completedSets, [exercise.name]: nextCount },
         restDuration: shouldRest ? exercise.rest : 0,
         restEndsAt: shouldRest ? Date.now() + exercise.rest * 1000 : null,
+        workEndsAt: null,
+        workDuration: 0,
         lastAction: source,
       };
+    });
+  }
+
+  function startTimedSet() {
+    setActiveWorkout((current) => {
+      if (!current || restLeftFor(current) > 0 || current.workEndsAt) return current;
+      const exercise = routinePlan.exercises[current.exerciseIndex];
+      const seconds = timedSecondsFor(exercise?.reps);
+      if (!seconds) return current;
+      if ((current.completedSets[exercise.name] || 0) >= exercise.sets) return current;
+      return { ...current, workEndsAt: Date.now() + seconds * 1000, workDuration: seconds };
     });
   }
 
@@ -512,6 +538,8 @@ export default function HomePage() {
         exerciseIndex: Math.min(routinePlan.exercises.length - 1, Math.max(0, current.exerciseIndex + direction)),
         restEndsAt: null,
         restDuration: 0,
+        workEndsAt: null,
+        workDuration: 0,
       };
     });
   }
@@ -805,6 +833,49 @@ export default function HomePage() {
     }
   }
 
+  async function switchRoutine(planId) {
+    if (!session?.user || !planId) return;
+    const current = plans.find((plan) => plan.active);
+    if (current?.id === planId) return;
+    if (activeWorkout || storedWorkout) {
+      setMessage("Termina o cierra el entreno en curso antes de cambiar de rutina.");
+      return;
+    }
+
+    setIsSaving(true);
+    const off = await supabase
+      .from("routine_templates")
+      .update({ active: false })
+      .eq("user_id", session.user.id)
+      .eq("active", true)
+      .select("id");
+
+    if (off.error) {
+      setIsSaving(false);
+      setMessage(off.error.message);
+      return;
+    }
+
+    const on = await supabase
+      .from("routine_templates")
+      .update({ active: true })
+      .eq("id", planId)
+      .eq("user_id", session.user.id)
+      .select("id");
+
+    if (on.error || !on.data?.length) {
+      // Restaura la anterior si la activación falló.
+      if (current) await supabase.from("routine_templates").update({ active: true }).eq("id", current.id);
+      setIsSaving(false);
+      setMessage(on.error?.message || "No se pudo cambiar la rutina. Falta el permiso de edicion (RLS) en routine_templates.");
+      return;
+    }
+
+    setIsSaving(false);
+    setMessage("Rutina activada.");
+    await loadData();
+  }
+
   async function deleteWorkout(id) {
     if (!window.confirm("Eliminar este entreno?")) return;
     const { error } = await supabase.from("workouts").delete().eq("id", id);
@@ -953,12 +1024,15 @@ export default function HomePage() {
   const activeExercise = activeWorkout ? routinePlan.exercises[activeWorkout.exerciseIndex] : null;
   const activeDoneSets = activeWorkout && activeExercise ? activeWorkout.completedSets[activeExercise.name] || 0 : 0;
   const activeRestLeft = restLeftFor(activeWorkout, now);
+  const activeWorkLeft = workLeftFor(activeWorkout, now);
   const activeElapsed = workoutElapsedFor(activeWorkout, now);
   const countdownCue = activeWorkout?.restEndsAt && now - activeWorkout.restEndsAt < 1400 && now >= activeWorkout.restEndsAt
     ? "Vamos"
     : [1, 2, 3].includes(activeRestLeft)
       ? String(activeRestLeft)
-      : null;
+      : [1, 2, 3].includes(activeWorkLeft)
+        ? String(activeWorkLeft)
+        : null;
 
   if (loading && !session) {
     return <main className="loading-screen">Preparando tu portal...</main>;
@@ -1041,8 +1115,10 @@ export default function HomePage() {
           todayWorkout={todayWorkout}
           today={today}
           workouts={workouts}
+          isSaving={isSaving}
           onChangeManual={(patch) => setManualWorkout((current) => ({ ...current, ...patch }))}
           onSubmitManual={saveManualWorkout}
+          onSwitchRoutine={switchRoutine}
           onDeleteWorkout={deleteWorkout}
           onStartWorkout={startOrContinueWorkout}
         />
@@ -1083,6 +1159,7 @@ export default function HomePage() {
         activeElapsed={activeElapsed}
         activeExercise={activeExercise}
         activeRestLeft={activeRestLeft}
+        activeWorkLeft={activeWorkLeft}
         activeWorkout={activeWorkout}
         countdownCue={countdownCue}
         isSaving={isSaving}
@@ -1098,6 +1175,7 @@ export default function HomePage() {
         onMarkSet={markSet}
         onMoveExercise={moveExercise}
         onSkipRest={skipRest}
+        onStartTimedSet={startTimedSet}
         onToggleShake={toggleShake}
         onToggleSound={toggleSound}
       />

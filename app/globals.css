@@ -1626,6 +1626,19 @@ textarea:focus {
   background: color-mix(in srgb, var(--warning) 10%, transparent);
 }
 
+.timer-box.is-working {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.timer-box.is-working strong {
+  color: var(--accent-strong);
+}
+
+.routine-switcher {
+  max-width: 420px;
+}
+
 .player-toggles {
   display: flex;
   align-items: center;
