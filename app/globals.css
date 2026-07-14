@@ -1551,7 +1551,13 @@ textarea:focus {
 .player-body p.cue {
   margin: 0;
   color: var(--muted);
-  line-height: 1.5;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.video-link {
+  width: fit-content;
+  text-decoration: none;
 }
 
 .last-time {

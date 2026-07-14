@@ -913,6 +913,11 @@ export function WorkoutPlayer({
             <div className="player-body">
               <ExerciseTags exercise={activeExercise} />
               <p className="cue">{activeExercise.cue}</p>
+              {activeExercise.referenceUrl && (
+                <a className="ghost-action compact video-link" href={activeExercise.referenceUrl} target="_blank" rel="noreferrer">
+                  ▶ Ver video de tecnica
+                </a>
+              )}
 
               {lastWorkout && (
                 <span className="last-time">
