@@ -1002,6 +1002,10 @@ export default function HomePage() {
     const diff = (new Date(`${today}T12:00:00`) - new Date(`${item.date}T12:00:00`)) / 86400000;
     return diff >= 0 && diff < 7;
   }).length;
+  const weekWorkouts = completedWorkouts.filter((item) => {
+    const diff = (new Date(`${today}T12:00:00`) - new Date(`${item.date}T12:00:00`)) / 86400000;
+    return diff >= 0 && diff < 7;
+  }).length;
   const trackingStart = firstTrackingDate(workouts, measurements, photos, habitLogs);
   const calendarDays = getMonthDays(month);
   const workoutDates = new Set(completedWorkouts.map((item) => item.date));
@@ -1066,11 +1070,12 @@ export default function HomePage() {
             completedToday={completedToday}
             displayName={displayName}
             dueHabits={dueHabits}
+            lastWorkout={lastWorkout}
             latestMeasurement={latestMeasurement}
             logsByKey={logsByKey}
             motivation={motivation}
             routinePlan={routinePlan}
-            stats={{ streak: currentStreak, longestStreak, nextAchievement, perfectWeekCount, weekCompleted }}
+            stats={{ streak: currentStreak, longestStreak, nextAchievement, perfectWeekCount, weekCompleted, weekWorkouts }}
             storedWorkout={storedWorkout}
             today={today}
             todayWorkout={todayWorkout}

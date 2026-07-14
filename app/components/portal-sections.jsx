@@ -56,12 +56,12 @@ export function AuthScreen({ authEmail, authPassword, isSaving, message, onEmail
     <main className="auth-shell">
       <section className="auth-hero">
         <p className="eyebrow">Portal Diario</p>
-        <h1>Un lugar tranquilo para cuidar tus habitos.</h1>
-        <p>Entreno, suplementos, paseo, descanso y pequenas rutinas en un panel privado pensado para el dia a dia.</p>
+        <h1>Tu entrenamiento, guiado y medido.</h1>
+        <p>Rutina guiada con temporizadores, seguimiento de progreso y tus habitos de apoyo, en un panel privado.</p>
         <ul>
-          <li>Habitos diarios y semanales con un toque.</li>
-          <li>Entreno guiado cuando toca entrenar.</li>
-          <li>Medidas, notas y fotos sin depender de hojas sueltas.</li>
+          <li>Entreno guiado con timers, video y registro automatico.</li>
+          <li>Peso, medidas y fotos para ver la direccion real.</li>
+          <li>Habitos de apoyo con un toque, sin ruido.</li>
         </ul>
       </section>
 
@@ -88,9 +88,9 @@ export function AuthScreen({ authEmail, authPassword, isSaving, message, onEmail
 export function AppHeader({ displayName, activeView, onViewChange, onSignOut }) {
   const views = [
     { key: "today", label: "Hoy", Icon: Sun },
-    { key: "habits", label: "Habitos", Icon: RotateCcw },
     { key: "training", label: "Entreno", Icon: Dumbbell },
     { key: "progress", label: "Progreso", Icon: ChartNoAxesColumn },
+    { key: "habits", label: "Habitos", Icon: RotateCcw },
     { key: "settings", label: "Ajustes", Icon: SlidersHorizontal },
   ];
 
@@ -131,6 +131,7 @@ export function TodayDashboard({
   completedToday,
   displayName,
   dueHabits,
+  lastWorkout,
   latestMeasurement,
   logsByKey,
   motivation,
@@ -143,33 +144,20 @@ export function TodayDashboard({
   onStartWorkout,
   onToggleHabit,
 }) {
-  const remaining = Math.max(0, dueHabits.length - completedToday);
-  const emptyHabits = dueHabits.length === 0;
-  const dayComplete = !emptyHabits && completionRate === 100;
-
   return (
     <section className="today-layout">
-      <div className={`today-hero ${dayComplete ? "is-complete" : ""}`}>
-        <span className="panel-kicker">Hoy</span>
-        <h2>{emptyHabits ? `${displayName}, configura tu primer habito.` : remaining ? `${displayName}, quedan ${remaining} habitos.` : `${displayName}, dia completo.`}</h2>
-        <p>
-          {emptyHabits
-            ? "Cuando actives tus habitos, este panel se convierte en tu lista diaria."
-            : remaining
-            ? "Marca lo importante sin ruido. Si el entreno toca hoy, aparece como una pieza mas del dia."
-            : "La base de hoy esta cerrada. Puedes anadir una nota, revisar progreso o dejarlo aqui."}
-        </p>
-        <div className="completion-meter" aria-label={`Progreso diario ${completionRate}%`}>
-          <span style={{ width: `${completionRate}%` }} />
-        </div>
+      <div className={`today-hero ${todayWorkout ? "is-complete" : ""}`}>
+        <span className="panel-kicker">Entreno de hoy</span>
+        <h2>{todayWorkout ? `${displayName}, entreno hecho.` : routinePlan.title}</h2>
+        <p>{todayWorkout ? "Ya esta guardado. Si el cuerpo pide mas, puedes hacer un bloque extra." : routinePlan.promise}</p>
         <div className="focus-row">
-          <span>{completionRate}% completado</span>
-          <span>{dueHabits.length || 0} habitos previstos</span>
-          <span>{today}</span>
+          <span>{routinePlan.duration}</span>
+          <span>{routinePlan.exercises.length} ejercicios</span>
+          {lastWorkout && <span>Ultima vez: {formatShortDate(lastWorkout.date)}</span>}
         </div>
         <div className="hero-actions">
-          <button className="primary-action" onClick={() => onSelectView("habits")}>
-            Revisar habitos
+          <button className="primary-action" onClick={onStartWorkout}>
+            {storedWorkout ? "Continuar entreno" : todayWorkout ? "Entrenar extra" : "Comenzar entreno"}
           </button>
           <button className="secondary-action" onClick={() => onSelectView("progress")}>
             Check-in rapido
@@ -179,16 +167,16 @@ export function TodayDashboard({
 
       <aside className="daily-panel">
         <div className="stat-line">
+          <strong>{stats.weekWorkouts}</strong>
+          <span>entrenos · 7 dias</span>
+        </div>
+        <div className="stat-line">
           <strong>{stats.streak}</strong>
           <span>racha</span>
         </div>
         <div className="stat-line">
-          <strong>{stats.weekCompleted}</strong>
-          <span>ultimos 7 dias</span>
-        </div>
-        <div className="stat-line">
-          <strong>{stats.longestStreak}</strong>
-          <span>mejor racha</span>
+          <strong>{latestMeasurement?.weight ? `${latestMeasurement.weight}` : "-"}</strong>
+          <span>peso kg</span>
         </div>
       </aside>
 
@@ -205,12 +193,17 @@ export function TodayDashboard({
         <div className="section-line">
           <div>
             <span className="panel-kicker">Habitos de hoy</span>
-            <h2>Lista diaria</h2>
+            <h2>{dueHabits.length ? `${completedToday} de ${dueHabits.length}` : "Lista diaria"}</h2>
           </div>
           <button className="ghost-action compact" onClick={() => onSelectView("habits")}>
             Editar
           </button>
         </div>
+        {dueHabits.length > 0 && (
+          <div className="completion-meter" aria-label={`Progreso diario ${completionRate}%`}>
+            <span style={{ width: `${completionRate}%` }} />
+          </div>
+        )}
         {dueHabits.map((habit) => (
           <HabitRow
             key={habit.id}
@@ -220,19 +213,6 @@ export function TodayDashboard({
           />
         ))}
         {!dueHabits.length && <p className="empty-state">Activa algun habito para empezar a construir tu panel diario.</p>}
-      </div>
-
-      <div className="training-callout">
-        <span className="panel-kicker">Entreno</span>
-        <h2>{todayWorkout ? "Entreno registrado" : routinePlan.title}</h2>
-        <p>{todayWorkout ? "El bloque de fuerza ya esta guardado para hoy." : routinePlan.promise}</p>
-        <div className="focus-row">
-          <span>{routinePlan.duration}</span>
-          <span>{routinePlan.exercises.length} ejercicios</span>
-        </div>
-        <button className="primary-action" onClick={onStartWorkout}>
-          {storedWorkout ? "Continuar entreno" : todayWorkout ? "Entrenar extra" : "Comenzar entreno"}
-        </button>
       </div>
 
       <AchievementShelf achievements={achievements} />

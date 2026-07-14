@@ -70,42 +70,42 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #11140f;
-    --surface: #1a1e18;
-    --surface-soft: #242a20;
-    --panel: rgba(26, 30, 24, 0.86);
-    --panel-tint: rgba(255, 255, 255, 0.05);
-    --line: rgba(236, 239, 231, 0.14);
-    --line-strong: rgba(236, 239, 231, 0.26);
-    --text: #ecefe7;
-    --muted: rgba(236, 239, 231, 0.66);
-    --soft: rgba(236, 239, 231, 0.4);
-    --accent-soft: rgba(79, 157, 118, 0.22);
+    --bg: #1b201a;
+    --surface: #252b23;
+    --surface-soft: #2f362c;
+    --panel: rgba(38, 44, 36, 0.92);
+    --panel-tint: rgba(255, 255, 255, 0.07);
+    --line: rgba(236, 239, 231, 0.16);
+    --line-strong: rgba(236, 239, 231, 0.3);
+    --text: #eef1e9;
+    --muted: rgba(238, 241, 233, 0.7);
+    --soft: rgba(238, 241, 233, 0.45);
+    --accent-soft: rgba(79, 157, 118, 0.24);
     --bad-soft: rgba(207, 95, 95, 0.2);
-    --shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
-    --shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.4);
-    --grid-overlay: rgba(236, 239, 231, 0.035);
+    --shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+    --shadow-soft: 0 10px 26px rgba(0, 0, 0, 0.24);
+    --grid-overlay: rgba(236, 239, 231, 0.03);
   }
 }
 
 /* Override manual de modo oscuro */
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #11140f;
-  --surface: #1a1e18;
-  --surface-soft: #242a20;
-  --panel: rgba(26, 30, 24, 0.86);
-  --panel-tint: rgba(255, 255, 255, 0.05);
-  --line: rgba(236, 239, 231, 0.14);
-  --line-strong: rgba(236, 239, 231, 0.26);
-  --text: #ecefe7;
-  --muted: rgba(236, 239, 231, 0.66);
-  --soft: rgba(236, 239, 231, 0.4);
-  --accent-soft: rgba(79, 157, 118, 0.22);
+  --bg: #1b201a;
+  --surface: #252b23;
+  --surface-soft: #2f362c;
+  --panel: rgba(38, 44, 36, 0.92);
+  --panel-tint: rgba(255, 255, 255, 0.07);
+  --line: rgba(236, 239, 231, 0.16);
+  --line-strong: rgba(236, 239, 231, 0.3);
+  --text: #eef1e9;
+  --muted: rgba(238, 241, 233, 0.7);
+  --soft: rgba(238, 241, 233, 0.45);
+  --accent-soft: rgba(79, 157, 118, 0.24);
   --bad-soft: rgba(207, 95, 95, 0.2);
-  --shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
-  --shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.4);
-  --grid-overlay: rgba(236, 239, 231, 0.035);
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+  --shadow-soft: 0 10px 26px rgba(0, 0, 0, 0.24);
+  --grid-overlay: rgba(236, 239, 231, 0.03);
 }
 
 /* Temas de acento (combinables con claro/oscuro) */
